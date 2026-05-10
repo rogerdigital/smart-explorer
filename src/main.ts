@@ -1,8 +1,11 @@
 import { Plugin } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "./constants";
+import { SmartExplorerView } from "./explorer/SmartExplorerView";
 
 export default class SmartExplorerPlugin extends Plugin {
 	async onload() {
+		this.registerView(SMART_EXPLORER_VIEW_TYPE, (leaf) => new SmartExplorerView(leaf));
+
 		this.addRibbonIcon("search", "Smart Explorer", () => {
 			this.activateView();
 		});
@@ -14,7 +17,9 @@ export default class SmartExplorerPlugin extends Plugin {
 		});
 	}
 
-	onunload() {}
+	onunload() {
+		this.app.workspace.detachLeavesOfType(SMART_EXPLORER_VIEW_TYPE);
+	}
 
 	async activateView() {
 		const { workspace } = this.app;
