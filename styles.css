@@ -13,6 +13,12 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.smart-explorer-toolbar-row {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
 .smart-explorer-search {
 	width: 100%;
 	padding: 4px 8px;
@@ -27,15 +33,36 @@
 	color: var(--text-faint);
 }
 
-.smart-explorer-sort,
-.smart-explorer-group {
-	width: 100%;
+.smart-explorer-toolbar select {
+	flex: 1;
+	min-width: 0;
 	padding: 4px 8px;
 	font-size: var(--font-ui-small);
 	background: var(--background-modifier-form-field);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
 	color: var(--text-normal);
+}
+
+.smart-explorer-toolbar button {
+	padding: 4px 8px;
+	font-size: var(--font-ui-small);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.smart-explorer-toolbar button:hover {
+	background: var(--background-modifier-hover);
+}
+
+.smart-explorer-toolbar button.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
 }
 
 .smart-explorer-list {
@@ -49,6 +76,24 @@
 	font-size: var(--font-ui-small);
 	text-align: center;
 	padding: 24px 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+}
+
+.smart-explorer-clear-btn {
+	padding: 4px 12px;
+	font-size: var(--font-ui-small);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.smart-explorer-clear-btn:hover {
+	background: var(--background-modifier-hover);
 }
 
 .smart-explorer-section-header {
