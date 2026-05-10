@@ -1,4 +1,4 @@
-import { ItemView, Plugin, WorkspaceLeaf } from "obsidian";
+import { ItemView, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
@@ -24,6 +24,7 @@ export class SmartExplorerView extends ItemView {
 	private selectedPath: string | null = null;
 	private previewEnabled = true;
 	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+	private rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: Plugin) {
 		super(leaf);
@@ -68,12 +69,62 @@ export class SmartExplorerView extends ItemView {
 		this.fileIndex.build();
 		this.renderList();
 		this.renderPreview();
+
+		this.registerVaultEvents();
 	}
 
 	async onClose() {
 		this.listContainer = null;
 		this.previewPanel = null;
 		if (this.searchTimeout) clearTimeout(this.searchTimeout);
+		if (this.rebuildTimeout) clearTimeout(this.rebuildTimeout);
+	}
+
+	private registerVaultEvents() {
+		const events = this.plugin.app.vault;
+
+		this.registerEvent(events.on("create", (file) => {
+			if (file instanceof TFile) {
+				this.fileIndex.addFile(file);
+				this.scheduleRebuild();
+			}
+		}));
+
+		this.registerEvent(events.on("delete", (file) => {
+			if (file instanceof TFile) {
+				this.fileIndex.removeFile(file.path);
+				if (this.selectedPath === file.path) {
+					this.selectedPath = null;
+				}
+				this.scheduleRebuild();
+			}
+		}));
+
+		this.registerEvent(events.on("rename", (file, oldPath) => {
+			if (file instanceof TFile) {
+				this.fileIndex.removeFile(oldPath);
+				this.fileIndex.addFile(file);
+				if (this.selectedPath === oldPath) {
+					this.selectedPath = file.path;
+				}
+				this.scheduleRebuild();
+			}
+		}));
+
+		this.registerEvent(events.on("modify", (file) => {
+			if (file instanceof TFile) {
+				this.fileIndex.addFile(file);
+				this.scheduleRebuild();
+			}
+		}));
+	}
+
+	private scheduleRebuild() {
+		if (this.rebuildTimeout) clearTimeout(this.rebuildTimeout);
+		this.rebuildTimeout = setTimeout(() => {
+			this.renderList();
+			this.renderPreview();
+		}, 300);
 	}
 
 	private renderToolbar(container: HTMLElement) {
@@ -172,7 +223,14 @@ export class SmartExplorerView extends ItemView {
 		if (!this.listContainer) return;
 		this.listContainer.empty();
 
-		const records = this.fileIndex.getAll();
+		const settings = (this.plugin as any).settings as SmartExplorerSettings | undefined;
+		const hiddenExts = new Set(settings?.hiddenExtensions ?? []);
+
+		let records = this.fileIndex.getAll();
+		if (hiddenExts.size > 0) {
+			records = records.filter((r) => !hiddenExts.has(r.extension));
+		}
+
 		if (records.length === 0) {
 			this.listContainer.createDiv({
 				cls: "smart-explorer-empty",
