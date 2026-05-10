@@ -47,7 +47,7 @@ Designed for users with large vaults who need faster, more flexible navigation t
 ### From source
 
 ```bash
-git clone https://github.com/rogerdeng/smart-explorer.git
+git clone https://github.com/rogerdigital/smart-explorer.git
 cd smart-explorer
 npm install
 npm run build
@@ -80,9 +80,8 @@ npm install       # install dependencies
 npm run dev       # watch mode for development
 npm run build     # production build
 npm test          # run unit tests
-npm run lint      # lint with ESLint
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)
