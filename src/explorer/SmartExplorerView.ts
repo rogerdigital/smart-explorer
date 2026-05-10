@@ -1,7 +1,9 @@
-import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
+import { getPreviewData, formatFileSize, formatDate } from "./preview";
+import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 const SORT_OPTIONS: { value: SortMode; text: string }[] = [
@@ -34,6 +36,9 @@ export class SmartExplorerView extends ItemView {
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
+	private previewPanel: HTMLElement | null = null;
+	private selectedPath: string | null = null;
+	private previewEnabled = true;
 	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(leaf: WorkspaceLeaf) {
@@ -68,14 +73,19 @@ export class SmartExplorerView extends ItemView {
 		container.classList.add("smart-explorer");
 
 		this.renderToolbar(container);
-		this.listContainer = container.createDiv({ cls: "smart-explorer-list" });
+
+		const body = container.createDiv({ cls: "smart-explorer-body" });
+		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
 		this.fileIndex.build();
 		this.renderList();
+		this.renderPreview();
 	}
 
 	async onClose() {
 		this.listContainer = null;
+		this.previewPanel = null;
 		if (this.searchTimeout) clearTimeout(this.searchTimeout);
 	}
 
@@ -125,6 +135,16 @@ export class SmartExplorerView extends ItemView {
 			this.updateToggleStates(row2);
 			this.renderList();
 		});
+
+		const previewBtn = this.createToggle(row2, "Preview", "smart-explorer-toggle-preview", () => {
+			this.previewEnabled = !this.previewEnabled;
+			previewBtn.classList.toggle("is-active", this.previewEnabled);
+			if (this.previewPanel) {
+				this.previewPanel.classList.toggle("is-hidden", !this.previewEnabled);
+			}
+			this.renderPreview();
+		});
+		previewBtn.classList.add("is-active");
 
 		this.updateToggleStates(row2);
 	}
@@ -192,9 +212,13 @@ export class SmartExplorerView extends ItemView {
 				};
 				const container = this.containerEl.children[1] as HTMLElement;
 				container.empty();
+				container.classList.add("smart-explorer");
 				this.renderToolbar(container);
-				this.listContainer = container.createDiv({ cls: "smart-explorer-list" });
+				const body = container.createDiv({ cls: "smart-explorer-body" });
+				this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+				this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 				this.renderList();
+				this.renderPreview();
 			});
 			return;
 		}
@@ -214,11 +238,93 @@ export class SmartExplorerView extends ItemView {
 	private renderRow(record: FileRecord) {
 		if (!this.listContainer) return;
 		const row = this.listContainer.createDiv({ cls: "smart-explorer-row" });
+		if (record.path === this.selectedPath) {
+			row.classList.add("is-selected");
+		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		row.addEventListener("click", () => {
+			this.selectedPath = record.path;
 			this.openFile(record.path);
+			this.highlightSelected();
+			this.renderPreview();
 		});
+	}
+
+	private highlightSelected() {
+		if (!this.listContainer) return;
+		const rows = this.listContainer.querySelectorAll(".smart-explorer-row");
+		rows.forEach((el) => {
+			const rowEl = el as HTMLElement;
+			rowEl.classList.toggle("is-selected", rowEl.dataset.path === this.selectedPath);
+		});
+	}
+
+	private renderPreview() {
+		if (!this.previewPanel) return;
+		this.previewPanel.empty();
+
+		if (!this.previewEnabled) {
+			this.previewPanel.classList.add("is-hidden");
+			return;
+		}
+		this.previewPanel.classList.remove("is-hidden");
+
+		if (!this.selectedPath) {
+			this.previewPanel.createDiv({
+				cls: "smart-explorer-preview-empty",
+				text: "Select a file to preview.",
+			});
+			return;
+		}
+
+		const record = this.fileIndex.get(this.selectedPath);
+		if (!record) {
+			this.previewPanel.createDiv({
+				cls: "smart-explorer-preview-empty",
+				text: "File not found.",
+			});
+			return;
+		}
+
+		const data = getPreviewData(record);
+		this.renderPreviewContent(data, record);
+	}
+
+	private renderPreviewContent(data: PreviewData, record: FileRecord) {
+		if (!this.previewPanel) return;
+
+		const header = this.previewPanel.createDiv({ cls: "smart-explorer-preview-header" });
+		header.createSpan({ cls: "smart-explorer-preview-title", text: record.basename });
+		header.createSpan({ cls: "smart-explorer-preview-path", text: record.path });
+
+		if (data.type === "markdown") {
+			if (data.heading) {
+				this.previewPanel.createDiv({
+					cls: "smart-explorer-preview-heading",
+					text: data.heading,
+				});
+			}
+			if (data.tags.length > 0) {
+				const tagsEl = this.previewPanel.createDiv({ cls: "smart-explorer-preview-tags" });
+				for (const tag of data.tags) {
+					tagsEl.createSpan({ cls: "smart-explorer-preview-tag", text: `#${tag}` });
+				}
+			}
+		} else if (data.type === "image") {
+			const imgContainer = this.previewPanel.createDiv({ cls: "smart-explorer-preview-image" });
+			const img = imgContainer.createEl("img");
+			const file = this.app.vault.getAbstractFileByPath(data.path);
+			if (file) {
+				img.src = this.app.vault.getResourcePath(file as any);
+			}
+			img.alt = record.basename;
+		} else {
+			const meta = this.previewPanel.createDiv({ cls: "smart-explorer-preview-meta" });
+			meta.createDiv({ text: `Type: ${data.extension.toUpperCase()}` });
+			meta.createDiv({ text: `Size: ${formatFileSize(data.size)}` });
+			meta.createDiv({ text: `Modified: ${formatDate(data.mtime)}` });
+		}
 	}
 
 	private async openFile(path: string) {
