@@ -1,13 +1,40 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
-import type { ExplorerQuery, ExplorerSection, FileRecord, SortMode, GroupMode } from "../types";
+import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
+
+const SORT_OPTIONS: { value: SortMode; text: string }[] = [
+	{ value: "name-asc", text: "Name A-Z" },
+	{ value: "name-desc", text: "Name Z-A" },
+	{ value: "modified-new", text: "Modified (newest)" },
+	{ value: "modified-old", text: "Modified (oldest)" },
+	{ value: "created-new", text: "Created (newest)" },
+	{ value: "created-old", text: "Created (oldest)" },
+	{ value: "extension", text: "Extension" },
+	{ value: "size", text: "Size" },
+];
+
+const GROUP_OPTIONS: { value: GroupMode; text: string }[] = [
+	{ value: "none", text: "No grouping" },
+	{ value: "folder", text: "By folder" },
+	{ value: "extension", text: "By extension" },
+	{ value: "modified-month", text: "By modified month" },
+	{ value: "top-folder", text: "By top-level folder" },
+];
+
+const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null }[] = [
+	{ value: "all", text: "Any time", days: null },
+	{ value: "1d", text: "Last day", days: 1 },
+	{ value: "7d", text: "Last 7 days", days: 7 },
+	{ value: "30d", text: "Last 30 days", days: 30 },
+];
 
 export class SmartExplorerView extends ItemView {
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
+	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(leaf: WorkspaceLeaf) {
 		super(leaf);
@@ -49,6 +76,7 @@ export class SmartExplorerView extends ItemView {
 
 	async onClose() {
 		this.listContainer = null;
+		if (this.searchTimeout) clearTimeout(this.searchTimeout);
 	}
 
 	private renderToolbar(container: HTMLElement) {
@@ -60,44 +88,77 @@ export class SmartExplorerView extends ItemView {
 			cls: "smart-explorer-search",
 		});
 		searchInput.addEventListener("input", () => {
-			this.query.searchText = searchInput.value;
+			if (this.searchTimeout) clearTimeout(this.searchTimeout);
+			this.searchTimeout = setTimeout(() => {
+				this.query.searchText = searchInput.value;
+				this.renderList();
+			}, 200);
+		});
+
+		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => { this.query.sort = v as SortMode; this.renderList(); });
+		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
+
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+
+		this.createSelect(
+			row2,
+			MODIFIED_RANGE_OPTIONS.map((o) => ({ value: o.value, text: o.text })),
+			"smart-explorer-modified",
+			(v) => {
+				const opt = MODIFIED_RANGE_OPTIONS.find((o) => o.value === v);
+				this.query.modifiedWithinDays = opt?.days ?? null;
+				this.renderList();
+			},
+		);
+
+		this.createToggle(row2, "MD", "smart-explorer-toggle-md", () => {
+			this.query.markdownOnly = !this.query.markdownOnly;
+			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
+			this.updateToggleStates(row2);
 			this.renderList();
 		});
 
-		const sortSelect = toolbar.createEl("select", { cls: "smart-explorer-sort" });
-		const sortOptions: { value: SortMode; text: string }[] = [
-			{ value: "name-asc", text: "Name A-Z" },
-			{ value: "name-desc", text: "Name Z-A" },
-			{ value: "modified-new", text: "Modified (newest)" },
-			{ value: "modified-old", text: "Modified (oldest)" },
-			{ value: "created-new", text: "Created (newest)" },
-			{ value: "created-old", text: "Created (oldest)" },
-			{ value: "extension", text: "Extension" },
-			{ value: "size", text: "Size" },
-		];
-		for (const opt of sortOptions) {
-			sortSelect.createEl("option", { value: opt.value, text: opt.text });
-		}
-		sortSelect.addEventListener("change", () => {
-			this.query.sort = sortSelect.value as SortMode;
+		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
+			this.query.attachmentsOnly = !this.query.attachmentsOnly;
+			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
+			this.updateToggleStates(row2);
 			this.renderList();
 		});
 
-		const groupSelect = toolbar.createEl("select", { cls: "smart-explorer-group" });
-		const groupOptions: { value: GroupMode; text: string }[] = [
-			{ value: "none", text: "No grouping" },
-			{ value: "folder", text: "By folder" },
-			{ value: "extension", text: "By extension" },
-			{ value: "modified-month", text: "By modified month" },
-			{ value: "top-folder", text: "By top-level folder" },
-		];
-		for (const opt of groupOptions) {
-			groupSelect.createEl("option", { value: opt.value, text: opt.text });
+		this.updateToggleStates(row2);
+	}
+
+	private createSelect(
+		parent: HTMLElement,
+		options: { value: string; text: string }[],
+		cls: string,
+		onChange: (value: string) => void,
+	) {
+		const select = parent.createEl("select", { cls });
+		for (const opt of options) {
+			select.createEl("option", { value: opt.value, text: opt.text });
 		}
-		groupSelect.addEventListener("change", () => {
-			this.query.group = groupSelect.value as GroupMode;
-			this.renderList();
-		});
+		select.addEventListener("change", () => onChange(select.value));
+		return select;
+	}
+
+	private createToggle(
+		parent: HTMLElement,
+		label: string,
+		cls: string,
+		onClick: () => void,
+	) {
+		const btn = parent.createEl("button", { cls, text: label });
+		btn.addEventListener("click", onClick);
+		return btn;
+	}
+
+	private updateToggleStates(row: HTMLElement) {
+		const mdBtn = row.querySelector(".smart-explorer-toggle-md") as HTMLElement | null;
+		const attachBtn = row.querySelector(".smart-explorer-toggle-attach") as HTMLElement | null;
+		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
+		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
 	}
 
 	private renderList() {
@@ -116,9 +177,24 @@ export class SmartExplorerView extends ItemView {
 		const sections = buildSections(records, this.query);
 
 		if (sections.length === 0 || sections.every((s) => s.records.length === 0)) {
-			this.listContainer.createDiv({
-				cls: "smart-explorer-empty",
-				text: "No files match your filters.",
+			const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty" });
+			empty.createSpan({ text: "No files match your filters." });
+			const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
+			clearBtn.addEventListener("click", () => {
+				this.query = {
+					searchText: "",
+					sort: "name-asc",
+					group: "none",
+					extension: null,
+					markdownOnly: false,
+					attachmentsOnly: false,
+					modifiedWithinDays: null,
+				};
+				const container = this.containerEl.children[1] as HTMLElement;
+				container.empty();
+				this.renderToolbar(container);
+				this.listContainer = container.createDiv({ cls: "smart-explorer-list" });
+				this.renderList();
 			});
 			return;
 		}
