@@ -1,0 +1,34 @@
+{
+	"name": "smart-explorer",
+	"version": "0.1.0",
+	"description": "An alternative file explorer with custom sorting, grouping, filtering, and lightweight previews.",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"lint": "eslint .",
+		"test": "node --experimental-vm-modules node_modules/.bin/jest"
+	},
+	"keywords": [
+		"obsidian",
+		"file-explorer",
+		"sorting",
+		"filtering",
+		"preview"
+	],
+	"license": "MIT",
+	"devDependencies": {
+		"@types/jest": "^29.5.12",
+		"@types/node": "^16.11.6",
+		"esbuild": "^0.25.5",
+		"jest": "^29.7.0",
+		"ts-jest": "^29.1.1",
+		"tslib": "^2.4.0",
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"obsidian": "latest"
+	}
+}
