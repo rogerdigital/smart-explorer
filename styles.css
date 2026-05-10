@@ -9,13 +9,13 @@
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	padding-bottom: 8px;
+	padding-bottom: 6px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .smart-explorer-toolbar-row {
 	display: flex;
-	gap: 4px;
+	gap: 3px;
 	align-items: center;
 }
 
@@ -36,8 +36,8 @@
 .smart-explorer-toolbar select {
 	flex: 1;
 	min-width: 0;
-	padding: 4px 8px;
-	font-size: var(--font-ui-small);
+	padding: 3px 6px;
+	font-size: var(--font-ui-smallest);
 	background: var(--background-modifier-form-field);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
@@ -45,8 +45,8 @@
 }
 
 .smart-explorer-toolbar button {
-	padding: 4px 8px;
-	font-size: var(--font-ui-small);
+	padding: 3px 6px;
+	font-size: var(--font-ui-smallest);
 	background: var(--background-modifier-form-field);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
@@ -65,10 +65,33 @@
 	border-color: var(--interactive-accent);
 }
 
+/* Layout: list on top, preview below */
+.smart-explorer-body {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
 .smart-explorer-list {
 	flex: 1;
 	overflow-y: auto;
-	padding-top: 8px;
+	padding-top: 4px;
+}
+
+.smart-explorer-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.smart-explorer-row:hover {
+	background: var(--background-modifier-hover);
 }
 
 .smart-explorer-row.is-selected {
@@ -79,6 +102,20 @@
 .smart-explorer-row.is-selected .smart-explorer-row-ext {
 	color: var(--text-on-accent);
 	opacity: 0.7;
+}
+
+.smart-explorer-row-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.smart-explorer-row-ext {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smallest);
+	flex-shrink: 0;
 }
 
 .smart-explorer-empty {
@@ -110,52 +147,19 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smallest);
 	font-weight: var(--font-semibold);
-	padding: 6px 4px 2px;
+	padding: 8px 4px 2px;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 }
 
-.smart-explorer-row {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 3px 6px;
-	border-radius: var(--radius-s);
-	cursor: pointer;
-	font-size: var(--font-ui-small);
-}
-
-.smart-explorer-row:hover {
-	background: var(--background-modifier-hover);
-}
-
-.smart-explorer-row-name {
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.smart-explorer-row-ext {
-	color: var(--text-faint);
-	font-size: var(--font-ui-smallest);
-	flex-shrink: 0;
-}
-
-/* Preview panel */
-.smart-explorer-body {
-	display: flex;
-	flex: 1;
-	min-height: 0;
-}
-
+/* Preview panel: below the list */
 .smart-explorer-preview {
-	width: 240px;
-	min-width: 180px;
-	border-left: 1px solid var(--background-modifier-border);
-	padding: 8px;
+	max-height: 200px;
 	overflow-y: auto;
+	border-top: 1px solid var(--background-modifier-border);
+	padding: 8px 4px;
 	font-size: var(--font-ui-small);
+	flex-shrink: 0;
 }
 
 .smart-explorer-preview.is-hidden {
@@ -164,15 +168,16 @@
 
 .smart-explorer-preview-empty {
 	color: var(--text-faint);
+	font-size: var(--font-ui-smallest);
 	text-align: center;
-	padding: 24px 8px;
+	padding: 8px;
 }
 
 .smart-explorer-preview-header {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	margin-bottom: 8px;
+	gap: 1px;
+	margin-bottom: 4px;
 }
 
 .smart-explorer-preview-title {
@@ -190,35 +195,38 @@
 .smart-explorer-preview-heading {
 	color: var(--text-muted);
 	font-style: italic;
-	margin-bottom: 6px;
+	margin-bottom: 4px;
 }
 
 .smart-explorer-preview-tags {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px;
+	gap: 3px;
 }
 
 .smart-explorer-preview-tag {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
-	padding: 1px 6px;
+	padding: 1px 5px;
 	border-radius: var(--radius-s);
 	font-size: var(--font-ui-smallest);
 }
 
 .smart-explorer-preview-image {
-	margin-top: 8px;
+	margin-top: 4px;
 }
 
 .smart-explorer-preview-image img {
 	max-width: 100%;
+	max-height: 150px;
+	object-fit: contain;
 	border-radius: var(--radius-s);
 }
 
 .smart-explorer-preview-meta {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: 1px;
 	color: var(--text-muted);
+	font-size: var(--font-ui-smallest);
 }
