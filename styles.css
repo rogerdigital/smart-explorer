@@ -50,3 +50,39 @@
 	text-align: center;
 	padding: 24px 8px;
 }
+
+.smart-explorer-section-header {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smallest);
+	font-weight: var(--font-semibold);
+	padding: 6px 4px 2px;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+.smart-explorer-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 6px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+}
+
+.smart-explorer-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.smart-explorer-row-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.smart-explorer-row-ext {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smallest);
+	flex-shrink: 0;
+}
