@@ -1,29 +1,12 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Plugin, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
 import { getPreviewData, formatFileSize, formatDate } from "./preview";
 import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
-
-const SORT_OPTIONS: { value: SortMode; text: string }[] = [
-	{ value: "name-asc", text: "Name A-Z" },
-	{ value: "name-desc", text: "Name Z-A" },
-	{ value: "modified-new", text: "Modified (newest)" },
-	{ value: "modified-old", text: "Modified (oldest)" },
-	{ value: "created-new", text: "Created (newest)" },
-	{ value: "created-old", text: "Created (oldest)" },
-	{ value: "extension", text: "Extension" },
-	{ value: "size", text: "Size" },
-];
-
-const GROUP_OPTIONS: { value: GroupMode; text: string }[] = [
-	{ value: "none", text: "No grouping" },
-	{ value: "folder", text: "By folder" },
-	{ value: "extension", text: "By extension" },
-	{ value: "modified-month", text: "By modified month" },
-	{ value: "top-folder", text: "By top-level folder" },
-];
+import type { SmartExplorerSettings } from "../settings/settings";
+import { SORT_OPTIONS, GROUP_OPTIONS } from "../settings/settings-helpers";
 
 const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null }[] = [
 	{ value: "all", text: "Any time", days: null },
@@ -33,6 +16,7 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 ];
 
 export class SmartExplorerView extends ItemView {
+	private plugin: Plugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
@@ -41,16 +25,19 @@ export class SmartExplorerView extends ItemView {
 	private previewEnabled = true;
 	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	constructor(leaf: WorkspaceLeaf) {
+	constructor(leaf: WorkspaceLeaf, plugin: Plugin) {
 		super(leaf);
+		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
+		const settings = (plugin as any).settings as SmartExplorerSettings;
+		this.previewEnabled = settings?.previewEnabled ?? true;
 		this.query = {
 			searchText: "",
-			sort: "name-asc",
-			group: "none",
+			sort: settings?.defaultSort ?? "name-asc",
+			group: settings?.defaultGroup ?? "none",
 			extension: null,
-			markdownOnly: false,
-			attachmentsOnly: false,
+			markdownOnly: settings?.markdownOnly ?? false,
+			attachmentsOnly: settings?.attachmentsOnly ?? false,
 			modifiedWithinDays: null,
 		};
 	}
