@@ -14,21 +14,19 @@ export default class SmartExplorerPlugin extends Plugin {
 		this.registerView(SMART_EXPLORER_VIEW_TYPE, (leaf) => new SmartExplorerView(leaf, this));
 
 		this.addRibbonIcon("compass", "Smart Explorer", () => {
-			this.activateView();
+			void this.activateView();
 		});
 
 		this.addCommand({
-			id: "open-smart-explorer",
+			id: "open",
 			name: "Open",
-			callback: () => this.activateView(),
+			callback: () => { void this.activateView(); },
 		});
 
 		this.addSettingTab(new SmartExplorerSettingTab(this.app, this));
 	}
 
-	onunload() {
-		this.app.workspace.detachLeavesOfType(SMART_EXPLORER_VIEW_TYPE);
-	}
+	onunload() {}
 
 	async loadSettings() {
 		const saved = await this.loadData() as Partial<SmartExplorerSettings> | null;

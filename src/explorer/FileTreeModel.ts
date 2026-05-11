@@ -1,4 +1,4 @@
-import type { ExplorerQuery, ExplorerSection, FileRecord, SortMode, GroupMode } from "../types";
+import type { ExplorerQuery, ExplorerSection, FileRecord } from "../types";
 import { sortRecords } from "./sorters";
 import { groupRecords } from "./groupers";
 import { applyFilters } from "./filters";

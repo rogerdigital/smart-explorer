@@ -1,4 +1,4 @@
-import { ItemView, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
@@ -6,6 +6,7 @@ import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } fro
 import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 import type { SmartExplorerSettings } from "../settings/settings";
+import type SmartExplorerPlugin from "../main";
 import { SORT_OPTIONS, GROUP_OPTIONS } from "../settings/settings-helpers";
 
 const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null }[] = [
@@ -16,7 +17,7 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 ];
 
 export class SmartExplorerView extends ItemView {
-	private plugin: Plugin;
+	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
@@ -26,19 +27,19 @@ export class SmartExplorerView extends ItemView {
 	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	private rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: Plugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
-		const settings = (plugin as any).settings as SmartExplorerSettings;
-		this.previewEnabled = settings?.previewEnabled ?? true;
+		const settings = this.plugin.settings;
+		this.previewEnabled = settings.previewEnabled;
 		this.query = {
 			searchText: "",
-			sort: settings?.defaultSort ?? "name-asc",
-			group: settings?.defaultGroup ?? "none",
+			sort: settings.defaultSort,
+			group: settings.defaultGroup,
 			extension: null,
-			markdownOnly: settings?.markdownOnly ?? false,
-			attachmentsOnly: settings?.attachmentsOnly ?? false,
+			markdownOnly: false,
+			attachmentsOnly: false,
 			modifiedWithinDays: null,
 		};
 	}
@@ -229,8 +230,8 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private updateToggleStates(row: HTMLElement) {
-		const mdBtn = row.querySelector(".smart-explorer-toggle-md") as HTMLElement | null;
-		const attachBtn = row.querySelector(".smart-explorer-toggle-attach") as HTMLElement | null;
+		const mdBtn = row.querySelector(".smart-explorer-toggle-md");
+		const attachBtn = row.querySelector(".smart-explorer-toggle-attach");
 		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
 		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
 	}
@@ -249,8 +250,7 @@ export class SmartExplorerView extends ItemView {
 		if (!this.listContainer) return;
 		this.listContainer.empty();
 
-		const settings = (this.plugin as any).settings as SmartExplorerSettings | undefined;
-		const hiddenExts = new Set(settings?.hiddenExtensions ?? []);
+		const hiddenExts = new Set(this.plugin.settings.hiddenExtensions);
 
 		let records = this.fileIndex.getAll();
 		if (hiddenExts.size > 0) {
@@ -316,7 +316,7 @@ export class SmartExplorerView extends ItemView {
 		row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		row.addEventListener("click", () => {
 			this.selectedPath = record.path;
-			this.openFile(record.path);
+			void this.openFile(record.path);
 			this.highlightSelected();
 			this.renderPreview();
 		});
@@ -326,8 +326,8 @@ export class SmartExplorerView extends ItemView {
 		if (!this.listContainer) return;
 		const rows = this.listContainer.querySelectorAll(".smart-explorer-row");
 		rows.forEach((el) => {
-			const rowEl = el as HTMLElement;
-			rowEl.classList.toggle("is-selected", rowEl.dataset.path === this.selectedPath);
+			const row = el as HTMLElement;
+			row.classList.toggle("is-selected", row.dataset.path === this.selectedPath);
 		});
 	}
 
@@ -359,7 +359,7 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const data = getPreviewData(record);
-		this.renderPreviewContent(data, record);
+		void this.renderPreviewContent(data, record);
 	}
 
 	private async renderPreviewContent(data: PreviewData, record: FileRecord) {
@@ -379,7 +379,7 @@ export class SmartExplorerView extends ItemView {
 
 			let paragraph: string | undefined;
 			const file = this.app.vault.getAbstractFileByPath(record.path);
-			if (file && file instanceof TFile) {
+			if (file instanceof TFile) {
 				try {
 					const content = await this.app.vault.cachedRead(file);
 					paragraph = extractFirstParagraph(content);
@@ -404,8 +404,8 @@ export class SmartExplorerView extends ItemView {
 			const imgContainer = this.previewPanel.createDiv({ cls: "smart-explorer-preview-image" });
 			const img = imgContainer.createEl("img");
 			const file = this.app.vault.getAbstractFileByPath(data.path);
-			if (file) {
-				img.src = this.app.vault.getResourcePath(file as any);
+			if (file instanceof TFile) {
+				img.src = this.app.vault.getResourcePath(file);
 			}
 			img.alt = record.basename;
 		} else {
@@ -418,8 +418,8 @@ export class SmartExplorerView extends ItemView {
 
 	private async openFile(path: string) {
 		const file = this.app.vault.getAbstractFileByPath(path);
-		if (file) {
-			await this.app.workspace.getLeaf(false).openFile(file as any);
+		if (file instanceof TFile) {
+			await this.app.workspace.getLeaf(false).openFile(file);
 		}
 	}
 }

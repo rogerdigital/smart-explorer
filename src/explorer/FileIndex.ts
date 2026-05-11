@@ -1,4 +1,4 @@
-import { App, MetadataCache, TFile, Vault } from "obsidian";
+import { App, MetadataCache, TFile } from "obsidian";
 import type { FileRecord } from "../types";
 
 const ATTACHMENT_EXTENSIONS = new Set([
