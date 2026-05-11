@@ -4,7 +4,7 @@ An alternative Obsidian side-pane file explorer with custom sorting, grouping, f
 
 Designed for users with large vaults who need faster, more flexible navigation than the default file tree.
 
-![Smart Explorer](docs/screenshots/smart-explorer-right-panel.png)
+![Smart Explorer](./docs/screenshots/smart-explorer-right-panel.png)
 
 ## Features
 
@@ -59,7 +59,7 @@ Then copy `main.js`, `manifest.json`, and `styles.css` to your vault's plugin fo
 
 ## Usage
 
-1. Open via the ribbon icon (search icon) or Command Palette → `Smart Explorer: Open`
+1. Open via the ribbon icon (compass icon) or Command Palette → `Smart Explorer: Open`
 2. Use the toolbar to sort, group, and filter files
 3. Click a file to open it; the preview panel updates with file context
 4. Configure defaults in Settings → Community Plugins → Smart Explorer
