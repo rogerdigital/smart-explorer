@@ -6,8 +6,6 @@ Designed for users with large vaults who need faster, more flexible navigation t
 
 ![Smart Explorer](docs/screenshots/smart-explorer-right-panel.png)
 
-![Smart Explorer Settings](docs/screenshots/smart-explorer-setting-panel.png)
-
 ## Features
 
 **Sorting** — Sort files by:
