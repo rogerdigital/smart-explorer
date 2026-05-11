@@ -4,10 +4,9 @@ An alternative Obsidian side-pane file explorer with custom sorting, grouping, f
 
 Designed for users with large vaults who need faster, more flexible navigation than the default file tree.
 
-<!-- TODO: Add screenshot here -->
-<!--
-![Smart Explorer](docs/screenshots/explorer-view.png)
--->
+![Smart Explorer](docs/screenshots/smart-explorer-right-panel.png)
+
+![Smart Explorer Settings](docs/screenshots/smart-explorer-setting-panel.png)
 
 ## Features
 
