@@ -1,4 +1,4 @@
-import { getPreviewData, formatFileSize, formatDate } from "../preview";
+import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "../preview";
 import type { FileRecord } from "../../types";
 
 function makeRecord(overrides: Partial<FileRecord> & { path: string }): FileRecord {
@@ -94,5 +94,42 @@ describe("formatDate", () => {
 		const result = formatDate(1700000000000);
 		expect(result).toBeTruthy();
 		expect(typeof result).toBe("string");
+	});
+});
+
+describe("extractFirstParagraph", () => {
+	it("extracts first paragraph after frontmatter and heading", () => {
+		const content = "---\ntitle: Test\n---\n# Heading\n\nThis is the first paragraph.\n\nSecond paragraph.";
+		expect(extractFirstParagraph(content)).toBe("This is the first paragraph.");
+	});
+
+	it("extracts paragraph without frontmatter", () => {
+		const content = "# Title\n\nHello world.\n\nMore text.";
+		expect(extractFirstParagraph(content)).toBe("Hello world.");
+	});
+
+	it("skips frontmatter only", () => {
+		const content = "---\ntitle: Only\n---";
+		expect(extractFirstParagraph(content)).toBeUndefined();
+	});
+
+	it("skips list items and code blocks", () => {
+		const content = "# Title\n\n- list item\n\n```\ncode\n```\n\nActual paragraph.";
+		expect(extractFirstParagraph(content)).toBe("Actual paragraph.");
+	});
+
+	it("truncates long paragraphs", () => {
+		const longLine = "a".repeat(300);
+		const result = extractFirstParagraph(longLine);
+		expect(result!.endsWith("...")).toBe(true);
+		expect(result!.length).toBe(203);
+	});
+
+	it("returns undefined for empty content", () => {
+		expect(extractFirstParagraph("")).toBeUndefined();
+	});
+
+	it("returns undefined for headings only", () => {
+		expect(extractFirstParagraph("# H1\n## H2")).toBeUndefined();
 	});
 });

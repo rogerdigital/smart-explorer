@@ -43,3 +43,43 @@ export function formatDate(ts: number): string {
 		day: "numeric",
 	});
 }
+
+export function extractFirstParagraph(content: string): string | undefined {
+	const lines = content.split("\n");
+	let inFrontmatter = false;
+	let frontmatterDone = false;
+	let inCodeBlock = false;
+
+	for (const line of lines) {
+		if (!frontmatterDone) {
+			if (line.trim() === "---" && !inFrontmatter) {
+				inFrontmatter = true;
+				continue;
+			}
+			if (line.trim() === "---" && inFrontmatter) {
+				inFrontmatter = false;
+				frontmatterDone = true;
+				continue;
+			}
+			if (inFrontmatter) continue;
+			frontmatterDone = true;
+		}
+
+		if (line.trim().startsWith("```")) {
+			inCodeBlock = !inCodeBlock;
+			continue;
+		}
+		if (inCodeBlock) continue;
+
+		const trimmed = line.trim();
+		if (trimmed === "") continue;
+		if (trimmed.startsWith("#")) continue;
+		if (trimmed.startsWith("!--")) continue;
+		if (trimmed.startsWith("|")) continue;
+		if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) continue;
+
+		return trimmed.length > 200 ? trimmed.slice(0, 200) + "..." : trimmed;
+	}
+
+	return undefined;
+}
