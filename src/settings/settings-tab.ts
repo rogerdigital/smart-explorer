@@ -15,7 +15,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Smart Explorer" });
+		new Setting(containerEl).setName("Smart Explorer").setHeading();
 
 		new Setting(containerEl)
 			.setName("Default sort mode")
