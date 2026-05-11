@@ -129,6 +129,13 @@
 	gap: 8px;
 }
 
+.smart-explorer-indexing {
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+	text-align: center;
+	padding: 24px 8px;
+}
+
 .smart-explorer-clear-btn {
 	padding: 4px 12px;
 	font-size: var(--font-ui-small);
@@ -196,6 +203,16 @@
 	color: var(--text-muted);
 	font-style: italic;
 	margin-bottom: 4px;
+}
+
+.smart-explorer-preview-paragraph {
+	color: var(--text-normal);
+	margin-bottom: 4px;
+	line-height: 1.4;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
 }
 
 .smart-explorer-preview-tags {

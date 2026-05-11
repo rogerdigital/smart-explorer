@@ -83,6 +83,14 @@ export class FileIndex {
 		this.records.delete(path);
 	}
 
+	getExtensions(): string[] {
+		const exts = new Set<string>();
+		for (const record of this.records.values()) {
+			exts.add(record.extension);
+		}
+		return Array.from(exts).sort();
+	}
+
 	get size(): number {
 		return this.records.size;
 	}
