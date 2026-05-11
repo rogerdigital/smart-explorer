@@ -2,7 +2,7 @@ import { ItemView, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
-import { getPreviewData, formatFileSize, formatDate } from "./preview";
+import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
 import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 import type { SmartExplorerSettings } from "../settings/settings";
@@ -66,11 +66,20 @@ export class SmartExplorerView extends ItemView {
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
 		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
+		this.showIndexing();
+		await new Promise((r) => setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
 		this.renderPreview();
 
 		this.registerVaultEvents();
+	}
+
+	private showIndexing() {
+		if (!this.listContainer) return;
+		this.listContainer.empty();
+		const el = this.listContainer.createDiv({ cls: "smart-explorer-indexing" });
+		el.createSpan({ text: "Indexing files..." });
 	}
 
 	async onClose() {
@@ -147,6 +156,13 @@ export class SmartExplorerView extends ItemView {
 		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => { this.query.sort = v as SortMode; this.renderList(); });
 		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
 
+		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
+		const extSelect = this.createSelect(row1, extOptions, "smart-explorer-ext", (v) => {
+			this.query.extension = v || null;
+			this.renderList();
+		});
+		this.populateExtensions(extSelect);
+
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
 
 		this.createSelect(
@@ -217,6 +233,16 @@ export class SmartExplorerView extends ItemView {
 		const attachBtn = row.querySelector(".smart-explorer-toggle-attach") as HTMLElement | null;
 		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
 		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
+	}
+
+	private populateExtensions(select: HTMLSelectElement) {
+		const currentValue = select.value;
+		while (select.options.length > 1) select.remove(1);
+		const extensions = this.fileIndex.getExtensions();
+		for (const ext of extensions) {
+			select.createEl("option", { value: ext, text: `.${ext}` });
+		}
+		select.value = currentValue || "";
 	}
 
 	private renderList() {
@@ -336,7 +362,7 @@ export class SmartExplorerView extends ItemView {
 		this.renderPreviewContent(data, record);
 	}
 
-	private renderPreviewContent(data: PreviewData, record: FileRecord) {
+	private async renderPreviewContent(data: PreviewData, record: FileRecord) {
 		if (!this.previewPanel) return;
 
 		const header = this.previewPanel.createDiv({ cls: "smart-explorer-preview-header" });
@@ -350,6 +376,24 @@ export class SmartExplorerView extends ItemView {
 					text: data.heading,
 				});
 			}
+
+			let paragraph: string | undefined;
+			const file = this.app.vault.getAbstractFileByPath(record.path);
+			if (file && file instanceof TFile) {
+				try {
+					const content = await this.app.vault.cachedRead(file);
+					paragraph = extractFirstParagraph(content);
+				} catch {
+					// file too large or unreadable, skip paragraph
+				}
+			}
+			if (paragraph) {
+				this.previewPanel.createDiv({
+					cls: "smart-explorer-preview-paragraph",
+					text: paragraph,
+				});
+			}
+
 			if (data.tags.length > 0) {
 				const tagsEl = this.previewPanel.createDiv({ cls: "smart-explorer-preview-tags" });
 				for (const tag of data.tags) {
