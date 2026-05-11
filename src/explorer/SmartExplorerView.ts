@@ -52,7 +52,7 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "search";
+		return "compass";
 	}
 
 	async onOpen() {

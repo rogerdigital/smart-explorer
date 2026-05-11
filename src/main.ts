@@ -13,7 +13,7 @@ export default class SmartExplorerPlugin extends Plugin {
 
 		this.registerView(SMART_EXPLORER_VIEW_TYPE, (leaf) => new SmartExplorerView(leaf, this));
 
-		this.addRibbonIcon("search", "Smart Explorer", () => {
+		this.addRibbonIcon("compass", "Smart Explorer", () => {
 			this.activateView();
 		});
 
