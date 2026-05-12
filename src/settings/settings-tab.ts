@@ -15,8 +15,6 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("General").setHeading();
-
 		new Setting(containerEl)
 			.setName("Default sort mode")
 			.setDesc("How files are sorted when the explorer opens.")
@@ -59,10 +57,10 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Hidden extensions")
-			.setDesc("Comma-separated list of file extensions to hide (e.g. json, css).")
+			.setDesc("Comma-separated list of file extensions to hide (e.g. JSON, CSS).")
 			.addText((text) => {
 				text
-					.setPlaceholder("json, css, txt")
+					.setPlaceholder("JSON, CSS, txt")
 					.setValue(this.plugin.settings.hiddenExtensions.join(", "))
 					.onChange(async (v) => {
 						this.plugin.settings.hiddenExtensions = v
