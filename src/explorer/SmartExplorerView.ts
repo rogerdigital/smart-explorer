@@ -5,7 +5,7 @@ import { buildSections } from "./FileTreeModel";
 import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
 import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
-import type { SmartExplorerSettings } from "../settings/settings";
+
 import type SmartExplorerPlugin from "../main";
 import { SORT_OPTIONS, GROUP_OPTIONS } from "../settings/settings-helpers";
 
@@ -49,7 +49,7 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Smart Explorer";
+		return "Smart explorer";
 	}
 
 	getIcon(): string {
@@ -88,6 +88,7 @@ export class SmartExplorerView extends ItemView {
 		this.previewPanel = null;
 		if (this.searchTimeout) clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) clearTimeout(this.rebuildTimeout);
+		await Promise.resolve();
 	}
 
 	private registerVaultEvents() {

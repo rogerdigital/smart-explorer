@@ -13,7 +13,7 @@ export default class SmartExplorerPlugin extends Plugin {
 
 		this.registerView(SMART_EXPLORER_VIEW_TYPE, (leaf) => new SmartExplorerView(leaf, this));
 
-		this.addRibbonIcon("compass", "Smart Explorer", () => {
+		this.addRibbonIcon("compass", "Smart explorer", () => {
 			void this.activateView();
 		});
 
@@ -49,6 +49,6 @@ export default class SmartExplorerPlugin extends Plugin {
 				active: true,
 			});
 		}
-		workspace.revealLeaf(leaf);
+		void workspace.revealLeaf(leaf);
 	}
 }
