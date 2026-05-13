@@ -76,8 +76,8 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 					.setPlaceholder("JSON, CSS, txt")
 					.setValue(this.plugin.settings.hiddenExtensions.join(", "))
 					.onChange((v) => {
-						if (debounceTimer) activeWindow.clearTimeout(debounceTimer);
-						debounceTimer = activeWindow.setTimeout(async () => {
+						if (debounceTimer) window.clearTimeout(debounceTimer);
+						debounceTimer = window.setTimeout(async () => {
 							this.plugin.settings.hiddenExtensions = v
 								.split(",")
 								.map((s) => s.trim().toLowerCase())
