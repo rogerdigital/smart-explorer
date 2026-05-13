@@ -88,6 +88,7 @@
 	cursor: pointer;
 	font-size: var(--font-ui-small);
 	line-height: 1.4;
+	contain: content;
 }
 
 .smart-explorer-row:hover {
@@ -253,12 +254,6 @@
 .smart-explorer-list,
 .smart-explorer-preview {
 	overscroll-behavior: contain;
-}
-
-/* --- Performance hints (all platforms) --- */
-
-.smart-explorer-row {
-	contain: content;
 }
 
 /* --- Mobile responsive overrides --- */
