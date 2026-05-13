@@ -74,7 +74,7 @@ export class SmartExplorerView extends ItemView {
 		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
 		this.showIndexing();
-		await new Promise((r) => activeWindow.setTimeout(r, 0));
+		await new Promise((r) => window.setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
 		this.renderPreview();
@@ -96,8 +96,8 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.listContainer = null;
 		this.previewPanel = null;
-		if (this.searchTimeout) activeWindow.clearTimeout(this.searchTimeout);
-		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
+		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
+		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 	}
 
 	private registerVaultEvents() {
@@ -140,8 +140,8 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private scheduleRebuild() {
-		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
-		this.rebuildTimeout = activeWindow.setTimeout(() => {
+		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
+		this.rebuildTimeout = window.setTimeout(() => {
 			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
 			this.renderPreview();
@@ -157,8 +157,8 @@ export class SmartExplorerView extends ItemView {
 			cls: "smart-explorer-search",
 		});
 		searchInput.addEventListener("input", () => {
-			if (this.searchTimeout) activeWindow.clearTimeout(this.searchTimeout);
-			this.searchTimeout = activeWindow.setTimeout(() => {
+			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
+			this.searchTimeout = window.setTimeout(() => {
 				this.query.searchText = searchInput.value;
 				this.renderList();
 			}, 200);
@@ -398,8 +398,8 @@ export class SmartExplorerView extends ItemView {
 		row.addEventListener("dragstart", (e) => {
 			e.dataTransfer?.setData("text/plain", record.path);
 			e.dataTransfer?.setData("text/uri-list", record.path);
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			(this.app as any).dragManager?.handleDrag?.(e, {
+			const app = this.app as unknown as { dragManager?: { handleDrag?: (e: DragEvent, info: Record<string, unknown>) => void } };
+			app.dragManager?.handleDrag?.(e, {
 				source: "smart-explorer",
 				type: "file",
 				file: this.app.vault.getAbstractFileByPath(record.path),
