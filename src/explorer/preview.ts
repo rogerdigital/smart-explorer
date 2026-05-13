@@ -50,9 +50,10 @@ export function extractFirstParagraph(content: string): string | undefined {
 	let frontmatterDone = false;
 	let inCodeBlock = false;
 
-	for (const line of lines) {
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+		const line = lines[lineIndex]!;
 		if (!frontmatterDone) {
-			if (line.trim() === "---" && !inFrontmatter) {
+			if (line.trim() === "---" && !inFrontmatter && lineIndex === 0) {
 				inFrontmatter = true;
 				continue;
 			}
@@ -77,6 +78,7 @@ export function extractFirstParagraph(content: string): string | undefined {
 		if (trimmed.startsWith("!--")) continue;
 		if (trimmed.startsWith("|")) continue;
 		if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) continue;
+		if (/^[-*_]{3,}$/.test(trimmed)) continue;
 
 		return trimmed.length > 200 ? trimmed.slice(0, 200) + "..." : trimmed;
 	}

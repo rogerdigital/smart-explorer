@@ -72,4 +72,46 @@ describe("groupRecords", () => {
 		const sections = groupRecords([], "folder");
 		expect(sections).toHaveLength(0);
 	});
+
+	it("sorts folder groups alphabetically", () => {
+		const files = [
+			makeRecord("zebra/z.md"),
+			makeRecord("alpha/a.md"),
+			makeRecord("middle/m.md"),
+		];
+		const sections = groupRecords(files, "folder");
+		expect(sections.map((s) => s.id)).toEqual(["alpha", "middle", "zebra"]);
+	});
+
+	it("sorts top-folder groups alphabetically", () => {
+		const files = [
+			makeRecord("zoo/sub/a.md"),
+			makeRecord("archive/old.md"),
+			makeRecord("notes/n.md"),
+		];
+		const sections = groupRecords(files, "top-folder");
+		expect(sections.map((s) => s.id)).toEqual(["archive", "notes", "zoo"]);
+	});
+
+	it("sorts extension groups alphabetically", () => {
+		const files = [
+			makeRecord("file.txt"),
+			makeRecord("file.csv"),
+			makeRecord("file.md"),
+		];
+		const sections = groupRecords(files, "extension");
+		expect(sections.map((s) => s.id)).toEqual([".csv", ".md", ".txt"]);
+	});
+
+	it("places root files under / in folder group", () => {
+		const files = [
+			makeRecord("root.md"),
+			makeRecord("notes/nested.md"),
+		];
+		const sections = groupRecords(files, "folder");
+		const rootSection = sections.find((s) => s.id === "/");
+		expect(rootSection).toBeDefined();
+		expect(rootSection!.records).toHaveLength(1);
+		expect(rootSection!.records[0]!.basename).toBe("root");
+	});
 });

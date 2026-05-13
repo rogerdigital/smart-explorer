@@ -71,15 +71,19 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			.setName("Hidden extensions")
 			.setDesc("Comma-separated list of file extensions to hide (e.g. JSON, CSS).")
 			.addText((text) => {
+				let debounceTimer: number | null = null;
 				text
 					.setPlaceholder("JSON, CSS, txt")
 					.setValue(this.plugin.settings.hiddenExtensions.join(", "))
-					.onChange(async (v) => {
-						this.plugin.settings.hiddenExtensions = v
-							.split(",")
-							.map((s) => s.trim().toLowerCase())
-							.filter((s) => s.length > 0);
-						await this.plugin.saveSettings();
+					.onChange((v) => {
+						if (debounceTimer) activeWindow.clearTimeout(debounceTimer);
+						debounceTimer = activeWindow.setTimeout(async () => {
+							this.plugin.settings.hiddenExtensions = v
+								.split(",")
+								.map((s) => s.trim().toLowerCase())
+								.filter((s) => s.length > 0);
+							await this.plugin.saveSettings();
+						}, 500);
 					});
 			});
 	}
