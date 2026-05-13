@@ -77,12 +77,12 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.hiddenExtensions.join(", "))
 					.onChange((v) => {
 						if (debounceTimer) window.clearTimeout(debounceTimer);
-						debounceTimer = window.setTimeout(async () => {
+						debounceTimer = window.setTimeout(() => {
 							this.plugin.settings.hiddenExtensions = v
 								.split(",")
 								.map((s) => s.trim().toLowerCase())
 								.filter((s) => s.length > 0);
-							await this.plugin.saveSettings();
+							void this.plugin.saveSettings();
 						}, 500);
 					});
 			});
