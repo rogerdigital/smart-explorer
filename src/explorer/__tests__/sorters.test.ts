@@ -88,4 +88,24 @@ describe("sortRecords", () => {
 		sortRecords(records, "name-asc");
 		expect(records).toEqual(copy);
 	});
+
+	it("sorts numbered filenames naturally", () => {
+		const numbered = [
+			makeRecord({ path: "file10.md" }),
+			makeRecord({ path: "file2.md" }),
+			makeRecord({ path: "file1.md" }),
+			makeRecord({ path: "file20.md" }),
+		];
+		const sorted = sortRecords(numbered, "name-asc");
+		expect(sorted.map((r) => r.basename)).toEqual(["file1", "file2", "file10", "file20"]);
+	});
+
+	it("handles empty array", () => {
+		expect(sortRecords([], "name-asc")).toEqual([]);
+	});
+
+	it("handles single element", () => {
+		const single = [makeRecord({ path: "only.md" })];
+		expect(sortRecords(single, "name-asc")).toHaveLength(1);
+	});
 });

@@ -2,7 +2,7 @@ import { App, MetadataCache, TFile } from "obsidian";
 import type { FileRecord } from "../types";
 
 const ATTACHMENT_EXTENSIONS = new Set([
-	"png", "jpg", "jpeg", "gif", "bmp", "svg",
+	"png", "jpg", "jpeg", "gif", "bmp", "svg", "webp",
 	"mp3", "wav", "ogg", "m4a",
 	"mp4", "webm", "mov",
 	"pdf", "zip", "tar", "gz",
@@ -37,7 +37,7 @@ export function normalizeFileRecord(
 				record.frontmatter = fileCache.frontmatter;
 			}
 			if (fileCache.tags) {
-				record.tags = fileCache.tags.map((t) => t.tag);
+				record.tags = fileCache.tags.map((t) => t.tag.replace(/^#/, ""));
 			}
 			if (fileCache.headings && fileCache.headings.length > 0) {
 				record.firstHeading = fileCache.headings[0]!.heading;

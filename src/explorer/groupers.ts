@@ -7,11 +7,13 @@ function groupByFolder(records: FileRecord[]): ExplorerSection[] {
 		if (!map.has(key)) map.set(key, []);
 		map.get(key)!.push(r);
 	}
-	return Array.from(map.entries()).map(([id, recs]) => ({
-		id,
-		title: id,
-		records: recs,
-	}));
+	return Array.from(map.entries())
+		.sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+		.map(([id, recs]) => ({
+			id,
+			title: id,
+			records: recs,
+		}));
 }
 
 function groupByExtension(records: FileRecord[]): ExplorerSection[] {
@@ -21,11 +23,13 @@ function groupByExtension(records: FileRecord[]): ExplorerSection[] {
 		if (!map.has(key)) map.set(key, []);
 		map.get(key)!.push(r);
 	}
-	return Array.from(map.entries()).map(([id, recs]) => ({
-		id,
-		title: id,
-		records: recs,
-	}));
+	return Array.from(map.entries())
+		.sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+		.map(([id, recs]) => ({
+			id,
+			title: id,
+			records: recs,
+		}));
 }
 
 function groupByModifiedMonth(records: FileRecord[]): ExplorerSection[] {
@@ -53,11 +57,13 @@ function groupByTopFolder(records: FileRecord[]): ExplorerSection[] {
 		if (!map.has(key)) map.set(key, []);
 		map.get(key)!.push(r);
 	}
-	return Array.from(map.entries()).map(([id, recs]) => ({
-		id,
-		title: id,
-		records: recs,
-	}));
+	return Array.from(map.entries())
+		.sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+		.map(([id, recs]) => ({
+			id,
+			title: id,
+			records: recs,
+		}));
 }
 
 export function groupRecords(records: FileRecord[], mode: GroupMode): ExplorerSection[] {

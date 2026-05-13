@@ -132,4 +132,24 @@ describe("extractFirstParagraph", () => {
 	it("returns undefined for headings only", () => {
 		expect(extractFirstParagraph("# H1\n## H2")).toBeUndefined();
 	});
+
+	it("does not treat --- as frontmatter if not on first line", () => {
+		const content = "# Heading\n\n---\n\nParagraph after horizontal rule.";
+		expect(extractFirstParagraph(content)).toBe("Paragraph after horizontal rule.");
+	});
+
+	it("handles document starting with horizontal rule (not frontmatter)", () => {
+		const content = "Some text\n---\nMore text.";
+		expect(extractFirstParagraph(content)).toBe("Some text");
+	});
+
+	it("handles frontmatter-only document with no body", () => {
+		const content = "---\ntitle: Empty\ntags: []\n---\n";
+		expect(extractFirstParagraph(content)).toBeUndefined();
+	});
+
+	it("handles horizontal rule in middle of document", () => {
+		const content = "---\ntitle: Test\n---\n\n# Heading\n\n---\n\nParagraph.";
+		expect(extractFirstParagraph(content)).toBe("Paragraph.");
+	});
 });

@@ -93,4 +93,49 @@ describe("normalizeFileRecord", () => {
 		normalizeFileRecord(file, mockCache);
 		expect(mockCache.getFileCache).not.toHaveBeenCalled();
 	});
+
+	it("strips # prefix from tags", () => {
+		const file = mockTFile({ path: "notes/tagged.md" });
+		const mockCache: any = {
+			getFileCache: () => ({
+				tags: [{ tag: "#project" }, { tag: "#todo" }],
+			}),
+		};
+		const record = normalizeFileRecord(file, mockCache);
+		expect(record.tags).toEqual(["project", "todo"]);
+	});
+
+	it("handles tags without # prefix", () => {
+		const file = mockTFile({ path: "notes/tagged.md" });
+		const mockCache: any = {
+			getFileCache: () => ({
+				tags: [{ tag: "plain" }],
+			}),
+		};
+		const record = normalizeFileRecord(file, mockCache);
+		expect(record.tags).toEqual(["plain"]);
+	});
+
+	it("recognizes webp as attachment", () => {
+		const file = mockTFile({ path: "img/photo.webp", extension: "webp" });
+		const record = normalizeFileRecord(file, null);
+		expect(record.isAttachment).toBe(true);
+	});
+
+	it("handles file with no extension", () => {
+		const file = mockTFile({ path: "Makefile", extension: "" });
+		file.basename = "Makefile";
+		const record = normalizeFileRecord(file, null);
+		expect(record.extension).toBe("");
+		expect(record.isMarkdown).toBe(false);
+		expect(record.isAttachment).toBe(false);
+	});
+
+	it("handles file with special characters in name", () => {
+		const file = mockTFile({ path: "notes/my file (2024).md" });
+		file.basename = "my file (2024)";
+		const record = normalizeFileRecord(file, null);
+		expect(record.basename).toBe("my file (2024)");
+		expect(record.path).toBe("notes/my file (2024).md");
+	});
 });
