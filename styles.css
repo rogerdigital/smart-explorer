@@ -247,3 +247,110 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smallest);
 }
+
+/* --- Scroll containment (all platforms) --- */
+
+.smart-explorer-list,
+.smart-explorer-preview {
+	overscroll-behavior: contain;
+}
+
+/* --- Performance hints (all platforms) --- */
+
+.smart-explorer-row {
+	contain: content;
+}
+
+/* --- Mobile responsive overrides --- */
+
+body.is-phone .smart-explorer,
+body.is-tablet .smart-explorer {
+	padding-bottom: env(safe-area-inset-bottom, 4px);
+}
+
+body.is-phone .smart-explorer-toolbar,
+body.is-tablet .smart-explorer-toolbar {
+	gap: 6px;
+	padding-bottom: 8px;
+}
+
+body.is-phone .smart-explorer-toolbar-row,
+body.is-tablet .smart-explorer-toolbar-row {
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+body.is-phone .smart-explorer-search,
+body.is-tablet .smart-explorer-search {
+	min-height: 40px;
+	padding: 8px 12px;
+	font-size: var(--font-ui-small);
+}
+
+body.is-phone .smart-explorer-toolbar select,
+body.is-tablet .smart-explorer-toolbar select {
+	min-height: 36px;
+	padding: 6px 8px;
+	font-size: var(--font-ui-small);
+}
+
+body.is-phone .smart-explorer-toolbar button,
+body.is-tablet .smart-explorer-toolbar button {
+	min-height: 36px;
+	padding: 6px 10px;
+	font-size: var(--font-ui-small);
+}
+
+body.is-phone .smart-explorer-row,
+body.is-tablet .smart-explorer-row {
+	min-height: 44px;
+	padding: 8px 10px;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body.is-phone .smart-explorer-section-header,
+body.is-tablet .smart-explorer-section-header {
+	padding: 12px 6px 4px;
+}
+
+body.is-phone .smart-explorer-preview {
+	max-height: 120px;
+}
+
+/* --- Touch feedback (active states) --- */
+
+body.is-phone .smart-explorer-row:active,
+body.is-tablet .smart-explorer-row:active {
+	background: var(--background-modifier-hover);
+	transition: background 0.05s ease;
+}
+
+body.is-phone .smart-explorer-toolbar button:active,
+body.is-tablet .smart-explorer-toolbar button:active {
+	background: var(--background-modifier-hover);
+	opacity: 0.8;
+}
+
+body.is-phone .smart-explorer-clear-btn:active,
+body.is-tablet .smart-explorer-clear-btn:active {
+	background: var(--background-modifier-hover);
+}
+
+/* --- Toolbar filter collapse (mobile) --- */
+
+body.is-phone .smart-explorer-toolbar-filters.is-collapsed,
+body.is-tablet .smart-explorer-toolbar-filters.is-collapsed {
+	display: none;
+}
+
+body.is-phone .smart-explorer-filter-toggle,
+body.is-tablet .smart-explorer-filter-toggle {
+	min-height: 36px;
+	min-width: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
