@@ -6,8 +6,6 @@ export type SmartExplorerSettings = {
 	previewEnabled: boolean;
 	mobilePreviewEnabled: boolean;
 	hiddenExtensions: string[];
-	markdownOnly: boolean;
-	attachmentsOnly: boolean;
 };
 
 export const DEFAULT_SETTINGS: SmartExplorerSettings = {
@@ -16,6 +14,4 @@ export const DEFAULT_SETTINGS: SmartExplorerSettings = {
 	previewEnabled: true,
 	mobilePreviewEnabled: true,
 	hiddenExtensions: [],
-	markdownOnly: false,
-	attachmentsOnly: false,
 };

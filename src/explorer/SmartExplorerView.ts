@@ -1,6 +1,7 @@
-import { ItemView, Platform, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Platform, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
+import { VirtualList } from "./VirtualList";
 import { buildSections } from "./FileTreeModel";
 import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
 import type { PreviewData } from "./preview";
@@ -22,8 +23,12 @@ export class SmartExplorerView extends ItemView {
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
 	private previewPanel: HTMLElement | null = null;
+	private extSelect: HTMLSelectElement | null = null;
+	private fileCountEl: HTMLElement | null = null;
 	private selectedPath: string | null = null;
 	private previewEnabled = true;
+	private previewGeneration = 0;
+	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
 
@@ -65,6 +70,7 @@ export class SmartExplorerView extends ItemView {
 
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+		this.createResizeHandle(body);
 		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
 		this.showIndexing();
@@ -84,11 +90,14 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	async onClose() {
+		if (this.virtualList) {
+			this.virtualList.destroy();
+			this.virtualList = null;
+		}
 		this.listContainer = null;
 		this.previewPanel = null;
 		if (this.searchTimeout) activeWindow.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
-		await Promise.resolve();
 	}
 
 	private registerVaultEvents() {
@@ -133,6 +142,7 @@ export class SmartExplorerView extends ItemView {
 	private scheduleRebuild() {
 		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
 		this.rebuildTimeout = activeWindow.setTimeout(() => {
+			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
 			this.renderPreview();
 		}, 300);
@@ -159,11 +169,11 @@ export class SmartExplorerView extends ItemView {
 		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
 
 		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
-		const extSelect = this.createSelect(row1, extOptions, "smart-explorer-ext", (v) => {
+		this.extSelect = this.createSelect(row1, extOptions, "smart-explorer-ext", (v) => {
 			this.query.extension = v || null;
 			this.renderList();
 		});
-		this.populateExtensions(extSelect);
+		this.populateExtensions(this.extSelect);
 
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 
@@ -214,6 +224,8 @@ export class SmartExplorerView extends ItemView {
 		});
 		previewBtn.classList.toggle("is-active", this.previewEnabled);
 
+		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
+
 		this.updateToggleStates(row2);
 	}
 
@@ -261,7 +273,12 @@ export class SmartExplorerView extends ItemView {
 
 	private renderList() {
 		if (!this.listContainer) return;
+		if (this.virtualList) {
+			this.virtualList.destroy();
+			this.virtualList = null;
+		}
 		this.listContainer.empty();
+		this.listContainer.setAttribute("role", "listbox");
 
 		const hiddenExts = new Set(this.plugin.settings.hiddenExtensions);
 
@@ -287,8 +304,8 @@ export class SmartExplorerView extends ItemView {
 			clearBtn.addEventListener("click", () => {
 				this.query = {
 					searchText: "",
-					sort: "name-asc",
-					group: "none",
+					sort: this.plugin.settings.defaultSort,
+					group: this.plugin.settings.defaultGroup,
 					extension: null,
 					markdownOnly: false,
 					attachmentsOnly: false,
@@ -307,28 +324,42 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 
-		for (const section of sections) {
-			if (section.records.length === 0) continue;
-			if (this.query.group !== "none") {
-				const header = this.listContainer.createDiv({ cls: "smart-explorer-section-header" });
-				header.setText(`${section.title} (${section.records.length})`);
-			}
-			for (const record of section.records) {
-				this.renderRow(record);
+		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
+		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
+
+		if (useVirtual) {
+			const allRecords = sections[0]!.records;
+			this.virtualList = new VirtualList(this.listContainer);
+			this.virtualList.setItems(allRecords.map((record) => () => this.createRowElement(record)));
+		} else {
+			for (const section of sections) {
+				if (section.records.length === 0) continue;
+				if (this.query.group !== "none") {
+					const header = this.listContainer.createDiv({ cls: "smart-explorer-section-header" });
+					header.setText(`${section.title} (${section.records.length})`);
+				}
+				for (const record of section.records) {
+					this.listContainer.appendChild(this.createRowElement(record));
+				}
 			}
 		}
+
+		this.updateFileCount(displayed, records.length);
 	}
 
-	private renderRow(record: FileRecord) {
-		if (!this.listContainer) return;
-		const row = this.listContainer.createDiv({ cls: "smart-explorer-row" });
+	private createRowElement(record: FileRecord): HTMLElement {
+		const row = createDiv({ cls: "smart-explorer-row" });
 		row.dataset.path = record.path;
+		row.setAttribute("tabindex", "0");
+		row.setAttribute("role", "option");
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
-		row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
-		row.addEventListener("click", () => {
+		if (record.extension) {
+			row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
+		}
+		const activate = () => {
 			if (Platform.isMobile && this.previewEnabled) {
 				if (this.selectedPath === record.path) {
 					void this.openFile(record.path);
@@ -343,7 +374,71 @@ export class SmartExplorerView extends ItemView {
 				this.highlightSelected();
 				this.renderPreview();
 			}
+		};
+		row.addEventListener("click", activate);
+		row.addEventListener("keydown", (e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				activate();
+			} else if (e.key === "ArrowDown") {
+				e.preventDefault();
+				(row.nextElementSibling as HTMLElement)?.focus();
+			} else if (e.key === "ArrowUp") {
+				e.preventDefault();
+				(row.previousElementSibling as HTMLElement)?.focus();
+			}
 		});
+
+		row.addEventListener("contextmenu", (e) => {
+			e.preventDefault();
+			this.showContextMenu(e, record);
+		});
+
+		row.draggable = true;
+		row.addEventListener("dragstart", (e) => {
+			e.dataTransfer?.setData("text/plain", record.path);
+			e.dataTransfer?.setData("text/uri-list", record.path);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+			(this.app as any).dragManager?.handleDrag?.(e, {
+				source: "smart-explorer",
+				type: "file",
+				file: this.app.vault.getAbstractFileByPath(record.path),
+			});
+		});
+
+		return row;
+	}
+
+	private updateFileCount(displayed: number, total: number) {
+		if (!this.fileCountEl) return;
+		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+	}
+
+	private showContextMenu(e: MouseEvent, record: FileRecord) {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle("Open in new tab").setIcon("file-plus").onClick(() => {
+				const file = this.app.vault.getAbstractFileByPath(record.path);
+				if (file instanceof TFile) {
+					void this.app.workspace.getLeaf("tab").openFile(file);
+				}
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Copy path").setIcon("copy").onClick(() => {
+				void navigator.clipboard.writeText(record.path);
+			}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Delete").setIcon("trash").onClick(() => {
+				const file = this.app.vault.getAbstractFileByPath(record.path);
+				if (file instanceof TFile) {
+					void this.app.fileManager.trashFile(file);
+				}
+			}),
+		);
+		menu.showAtMouseEvent(e);
 	}
 
 	private highlightSelected() {
@@ -383,10 +478,11 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const data = getPreviewData(record);
-		void this.renderPreviewContent(data, record);
+		const gen = ++this.previewGeneration;
+		void this.renderPreviewContent(data, record, gen);
 	}
 
-	private async renderPreviewContent(data: PreviewData, record: FileRecord) {
+	private async renderPreviewContent(data: PreviewData, record: FileRecord, gen: number) {
 		if (!this.previewPanel) return;
 
 		const header = this.previewPanel.createDiv({ cls: "smart-explorer-preview-header" });
@@ -406,6 +502,7 @@ export class SmartExplorerView extends ItemView {
 			if (file instanceof TFile) {
 				try {
 					const content = await this.app.vault.cachedRead(file);
+					if (gen !== this.previewGeneration) return;
 					paragraph = extractFirstParagraph(content);
 				} catch {
 					// file too large or unreadable, skip paragraph
@@ -440,10 +537,47 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
+	private createResizeHandle(body: HTMLElement) {
+		const handle = body.createDiv({ cls: "smart-explorer-resize-handle" });
+		let startY = 0;
+		let startHeight = 0;
+
+		const onMove = (e: MouseEvent | TouchEvent) => {
+			const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
+			const delta = clientY - startY;
+			if (this.previewPanel) {
+				this.previewPanel.style.height = `${Math.max(60, startHeight - delta)}px`;
+			}
+		};
+
+		const onEnd = () => {
+			activeWindow.document.removeEventListener("mousemove", onMove);
+			activeWindow.document.removeEventListener("mouseup", onEnd);
+			activeWindow.document.removeEventListener("touchmove", onMove);
+			activeWindow.document.removeEventListener("touchend", onEnd);
+		};
+
+		const onStart = (e: MouseEvent | TouchEvent) => {
+			startY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
+			startHeight = this.previewPanel?.clientHeight ?? 200;
+			activeWindow.document.addEventListener("mousemove", onMove);
+			activeWindow.document.addEventListener("mouseup", onEnd);
+			activeWindow.document.addEventListener("touchmove", onMove);
+			activeWindow.document.addEventListener("touchend", onEnd);
+		};
+
+		handle.addEventListener("mousedown", onStart);
+		handle.addEventListener("touchstart", onStart);
+	}
+
 	private async openFile(path: string) {
 		const file = this.app.vault.getAbstractFileByPath(path);
 		if (file instanceof TFile) {
-			await this.app.workspace.getLeaf(false).openFile(file);
+			let leaf = this.app.workspace.getLeaf(false);
+			if (leaf.view?.getViewType() === SMART_EXPLORER_VIEW_TYPE) {
+				leaf = this.app.workspace.getLeaf("tab");
+			}
+			await leaf.openFile(file);
 		}
 	}
 }

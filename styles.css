@@ -354,3 +354,41 @@ body.is-tablet .smart-explorer-filter-toggle {
 	justify-content: center;
 	flex-shrink: 0;
 }
+
+.smart-explorer-file-count {
+	font-size: var(--font-ui-smallest);
+	color: var(--text-faint);
+	text-align: right;
+	padding: 2px 4px 0;
+}
+
+.smart-explorer-row[draggable="true"] {
+	cursor: grab;
+}
+
+.smart-explorer-row[draggable="true"]:active {
+	cursor: grabbing;
+}
+
+.smart-explorer-resize-handle {
+	height: 6px;
+	cursor: ns-resize;
+	flex-shrink: 0;
+	background: transparent;
+	border-top: 1px solid var(--background-modifier-border);
+	transition: background 0.15s;
+}
+
+.smart-explorer-resize-handle:hover {
+	background: var(--interactive-accent);
+	opacity: 0.5;
+}
+
+.smart-explorer-virtual-spacer {
+	flex-shrink: 0;
+}
+
+.smart-explorer-virtual-content {
+	display: flex;
+	flex-direction: column;
+}
