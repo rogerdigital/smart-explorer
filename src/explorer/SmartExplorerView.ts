@@ -1,4 +1,4 @@
-import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, Platform, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { buildSections } from "./FileTreeModel";
@@ -32,7 +32,7 @@ export class SmartExplorerView extends ItemView {
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
 		const settings = this.plugin.settings;
-		this.previewEnabled = settings.previewEnabled;
+		this.previewEnabled = Platform.isMobile ? settings.mobilePreviewEnabled : settings.previewEnabled;
 		this.query = {
 			searchText: "",
 			sort: settings.defaultSort,
@@ -165,7 +165,19 @@ export class SmartExplorerView extends ItemView {
 		});
 		this.populateExtensions(extSelect);
 
-		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
+
+		if (Platform.isMobile) {
+			row2.classList.add("is-collapsed");
+			const filterToggleBtn = row1.createEl("button", {
+				cls: "smart-explorer-filter-toggle",
+				text: "⚙",
+			});
+			filterToggleBtn.addEventListener("click", () => {
+				row2.classList.toggle("is-collapsed");
+				filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
+			});
+		}
 
 		this.createSelect(
 			row2,
@@ -200,7 +212,7 @@ export class SmartExplorerView extends ItemView {
 			}
 			this.renderPreview();
 		});
-		previewBtn.classList.add("is-active");
+		previewBtn.classList.toggle("is-active", this.previewEnabled);
 
 		this.updateToggleStates(row2);
 	}
@@ -310,16 +322,27 @@ export class SmartExplorerView extends ItemView {
 	private renderRow(record: FileRecord) {
 		if (!this.listContainer) return;
 		const row = this.listContainer.createDiv({ cls: "smart-explorer-row" });
+		row.dataset.path = record.path;
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		row.addEventListener("click", () => {
-			this.selectedPath = record.path;
-			void this.openFile(record.path);
-			this.highlightSelected();
-			this.renderPreview();
+			if (Platform.isMobile && this.previewEnabled) {
+				if (this.selectedPath === record.path) {
+					void this.openFile(record.path);
+				} else {
+					this.selectedPath = record.path;
+					this.highlightSelected();
+					this.renderPreview();
+				}
+			} else {
+				this.selectedPath = record.path;
+				void this.openFile(record.path);
+				this.highlightSelected();
+				this.renderPreview();
+			}
 		});
 	}
 

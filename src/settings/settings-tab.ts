@@ -56,6 +56,18 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("Preview enabled (mobile)")
+			.setDesc("Show the file preview panel by default on mobile devices.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.mobilePreviewEnabled)
+					.onChange(async (v) => {
+						this.plugin.settings.mobilePreviewEnabled = v;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
 			.setName("Hidden extensions")
 			.setDesc("Comma-separated list of file extensions to hide (e.g. JSON, CSS).")
 			.addText((text) => {
