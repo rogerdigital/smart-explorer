@@ -18,6 +18,10 @@
 		"filtering",
 		"preview"
 	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/rogerdigital/smart-explorer.git"
+	},
 	"license": "MIT",
 	"devDependencies": {
 		"@types/jest": "^29.5.12",
