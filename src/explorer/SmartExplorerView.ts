@@ -24,8 +24,8 @@ export class SmartExplorerView extends ItemView {
 	private previewPanel: HTMLElement | null = null;
 	private selectedPath: string | null = null;
 	private previewEnabled = true;
-	private searchTimeout: ReturnType<typeof setTimeout> | null = null;
-	private rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
+	private searchTimeout: number | null = null;
+	private rebuildTimeout: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
@@ -68,7 +68,7 @@ export class SmartExplorerView extends ItemView {
 		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
 		this.showIndexing();
-		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => activeWindow.setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
 		this.renderPreview();
@@ -86,8 +86,8 @@ export class SmartExplorerView extends ItemView {
 	async onClose() {
 		this.listContainer = null;
 		this.previewPanel = null;
-		if (this.searchTimeout) clearTimeout(this.searchTimeout);
-		if (this.rebuildTimeout) clearTimeout(this.rebuildTimeout);
+		if (this.searchTimeout) activeWindow.clearTimeout(this.searchTimeout);
+		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
 		await Promise.resolve();
 	}
 
@@ -131,8 +131,8 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private scheduleRebuild() {
-		if (this.rebuildTimeout) clearTimeout(this.rebuildTimeout);
-		this.rebuildTimeout = setTimeout(() => {
+		if (this.rebuildTimeout) activeWindow.clearTimeout(this.rebuildTimeout);
+		this.rebuildTimeout = activeWindow.setTimeout(() => {
 			this.renderList();
 			this.renderPreview();
 		}, 300);
@@ -147,8 +147,8 @@ export class SmartExplorerView extends ItemView {
 			cls: "smart-explorer-search",
 		});
 		searchInput.addEventListener("input", () => {
-			if (this.searchTimeout) clearTimeout(this.searchTimeout);
-			this.searchTimeout = setTimeout(() => {
+			if (this.searchTimeout) activeWindow.clearTimeout(this.searchTimeout);
+			this.searchTimeout = activeWindow.setTimeout(() => {
 				this.query.searchText = searchInput.value;
 				this.renderList();
 			}, 200);

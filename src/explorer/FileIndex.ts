@@ -34,7 +34,7 @@ export function normalizeFileRecord(
 		const fileCache = cache.getFileCache(file);
 		if (fileCache) {
 			if (fileCache.frontmatter) {
-				record.frontmatter = fileCache.frontmatter as Record<string, unknown>;
+				record.frontmatter = fileCache.frontmatter;
 			}
 			if (fileCache.tags) {
 				record.tags = fileCache.tags.map((t) => t.tag);
