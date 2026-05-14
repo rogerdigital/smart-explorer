@@ -10,11 +10,11 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 
 | Category | Options |
 |----------|---------|
-| **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size |
+| **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual (drag-and-drop) |
 | **Group** | Folder, extension, modified month, top-level folder |
 | **Filter** | Search by name/path, markdown-only, attachments-only, date range (1d / 7d / 30d) |
 | **Preview** | Headings & tags for markdown, thumbnails for images, metadata for other files |
-| **Settings** | Default sort/group mode, preview panel toggle, hidden extensions |
+| **Settings** | Default sort/group mode, preview panel toggle, hidden extensions, reset manual order |
 
 ## Installation
 
