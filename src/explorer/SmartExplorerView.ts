@@ -35,6 +35,7 @@ export class SmartExplorerView extends ItemView {
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
 	private saveOrderTimeout: number | null = null;
+	private tooltipEl: HTMLElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
@@ -94,6 +95,7 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	async onClose() {
+		this.hideTooltip();
 		if (this.virtualList) {
 			this.virtualList.destroy();
 			this.virtualList = null;
@@ -203,6 +205,8 @@ export class SmartExplorerView extends ItemView {
 				cls: "smart-explorer-filter-toggle",
 				text: "⚙",
 			});
+			filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
+			filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
 			filterToggleBtn.addEventListener("click", () => {
 				row2.classList.toggle("is-collapsed");
 				filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
@@ -225,14 +229,14 @@ export class SmartExplorerView extends ItemView {
 			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
-		});
+		}, "Markdown files only");
 
 		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
 			this.query.attachmentsOnly = !this.query.attachmentsOnly;
 			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
-		});
+		}, "Attachment files only");
 
 		const previewBtn = this.createToggle(row2, "Preview", "smart-explorer-toggle-preview", () => {
 			this.previewEnabled = !this.previewEnabled;
@@ -241,7 +245,7 @@ export class SmartExplorerView extends ItemView {
 				this.previewPanel.classList.toggle("is-hidden", !this.previewEnabled);
 			}
 			this.renderPreview();
-		});
+		}, "Toggle preview panel");
 		previewBtn.classList.toggle("is-active", this.previewEnabled);
 
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
@@ -268,8 +272,13 @@ export class SmartExplorerView extends ItemView {
 		label: string,
 		cls: string,
 		onClick: () => void,
+		tooltip?: string,
 	) {
 		const btn = parent.createEl("button", { cls, text: label });
+		if (tooltip) {
+			btn.addEventListener("mouseenter", (e) => this.showTooltip(tooltip, e));
+			btn.addEventListener("mouseleave", () => this.hideTooltip());
+		}
 		btn.addEventListener("click", onClick);
 		return btn;
 	}
@@ -413,6 +422,9 @@ export class SmartExplorerView extends ItemView {
 		if (record.extension) {
 			row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		}
+		const tooltipText = `${record.basename}${record.extension ? "." + record.extension : ""}\nCreated: ${this.formatDate(record.ctime)}\nModified: ${this.formatDate(record.mtime)}`;
+		row.addEventListener("mouseenter", (e) => this.showTooltip(tooltipText, e));
+		row.addEventListener("mouseleave", () => this.hideTooltip());
 		const activate = () => {
 			if (Platform.isMobile && this.previewEnabled) {
 				if (this.selectedPath === record.path) {
@@ -468,6 +480,28 @@ export class SmartExplorerView extends ItemView {
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+	}
+
+	private formatDate(ts: number): string {
+		const d = new Date(ts);
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+	}
+
+	private showTooltip(text: string, e: MouseEvent) {
+		if (!this.tooltipEl) {
+			this.tooltipEl = createDiv({ cls: "smart-explorer-tooltip" });
+			activeDocument.body.appendChild(this.tooltipEl);
+		}
+		this.tooltipEl.textContent = text;
+		this.tooltipEl.style.left = `${e.clientX + 12}px`;
+		this.tooltipEl.style.top = `${e.clientY + 12}px`;
+	}
+
+	private hideTooltip() {
+		if (this.tooltipEl) {
+			this.tooltipEl.remove();
+			this.tooltipEl = null;
+		}
 	}
 
 	private buildManualOrderIndex() {
