@@ -77,6 +77,7 @@
 	flex: 1;
 	overflow-y: auto;
 	padding-top: 4px;
+	position: relative;
 }
 
 .smart-explorer-row {
@@ -386,4 +387,43 @@ body.is-tablet .smart-explorer-filter-toggle {
 .smart-explorer-virtual-content {
 	display: flex;
 	flex-direction: column;
+}
+
+/* Drag-and-drop manual sort */
+.smart-explorer-drop-indicator {
+	position: absolute;
+	left: 4px;
+	right: 4px;
+	height: 2px;
+	background: var(--interactive-accent);
+	border-radius: 1px;
+	pointer-events: none;
+	z-index: 10;
+	opacity: 0;
+	transition: top 0.05s ease, opacity 0.1s ease;
+}
+
+.smart-explorer-drop-indicator.is-visible {
+	opacity: 1;
+}
+
+.smart-explorer-row.is-dragging {
+	opacity: 0.4;
+}
+
+.smart-explorer-drag-ghost {
+	position: fixed;
+	pointer-events: none;
+	z-index: 1000;
+	opacity: 0.7;
+	background: var(--background-primary);
+	border: 1px solid var(--interactive-accent);
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

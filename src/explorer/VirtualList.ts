@@ -15,6 +15,7 @@ export class VirtualList {
 	private scrollHandler: () => void;
 	private lastStart = -1;
 	private lastEnd = -1;
+	onAfterRender: (() => void) | null = null;
 
 	constructor(container: HTMLElement) {
 		this.container = container;
@@ -60,6 +61,7 @@ export class VirtualList {
 			const el = this.items[i]!();
 			this.content.appendChild(el);
 		}
+		this.onAfterRender?.();
 	}
 
 	static shouldVirtualize(count: number): boolean {

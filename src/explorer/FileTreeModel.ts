@@ -6,8 +6,9 @@ import { applyFilters } from "./filters";
 export function buildSections(
 	records: FileRecord[],
 	query: ExplorerQuery,
+	manualOrderIndex?: Map<string, number>,
 ): ExplorerSection[] {
 	const filtered = applyFilters(records, query);
-	const sorted = sortRecords(filtered, query.sort);
+	const sorted = sortRecords(filtered, query.sort, manualOrderIndex);
 	return groupRecords(sorted, query.group);
 }

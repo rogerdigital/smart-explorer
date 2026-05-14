@@ -86,5 +86,17 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 						}, 500);
 					});
 			});
+
+		new Setting(containerEl)
+			.setName("Reset manual order")
+			.setDesc("Clear the saved drag-and-drop file order. Files will be re-ordered based on the current sort when you next select Manual sort.")
+			.addButton((btn) => {
+				btn.setButtonText("Reset").onClick(async () => {
+					this.plugin.settings.manualOrder = [];
+					await this.plugin.saveSettings();
+					btn.setButtonText("Done!");
+					window.setTimeout(() => btn.setButtonText("Reset"), 1500);
+				});
+			});
 	}
 }

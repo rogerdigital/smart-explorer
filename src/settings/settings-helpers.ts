@@ -9,6 +9,7 @@ export const SORT_OPTIONS: { value: SortMode; text: string }[] = [
 	{ value: "created-old", text: "Created (oldest)" },
 	{ value: "extension", text: "Extension" },
 	{ value: "size", text: "Size" },
+	{ value: "manual", text: "Manual" },
 ];
 
 export const GROUP_OPTIONS: { value: GroupMode; text: string }[] = [
