@@ -108,4 +108,48 @@ describe("sortRecords", () => {
 		const single = [makeRecord({ path: "only.md" })];
 		expect(sortRecords(single, "name-asc")).toHaveLength(1);
 	});
+
+	describe("manual sort mode", () => {
+		it("sorts by provided index map", () => {
+			const orderIndex = new Map([
+				["c/charlie.md", 0],
+				["a/bravo.md", 1],
+				["b/alpha.md", 2],
+				["a/alpha.md", 3],
+			]);
+			const sorted = sortRecords(records, "manual", orderIndex);
+			expect(sorted.map((r) => r.path)).toEqual([
+				"c/charlie.md",
+				"a/bravo.md",
+				"b/alpha.md",
+				"a/alpha.md",
+			]);
+		});
+
+		it("puts items missing from map at the end", () => {
+			const orderIndex = new Map([
+				["a/bravo.md", 0],
+				["c/charlie.md", 1],
+			]);
+			const sorted = sortRecords(records, "manual", orderIndex);
+			expect(sorted[0]!.path).toBe("a/bravo.md");
+			expect(sorted[1]!.path).toBe("c/charlie.md");
+			// Remaining items sorted by path as tie-breaker
+			const remaining = sorted.slice(2).map((r) => r.path);
+			expect(remaining).toEqual(["a/alpha.md", "b/alpha.md"]);
+		});
+
+		it("falls back to path tie-breaker for equal index (both missing)", () => {
+			const orderIndex = new Map<string, number>();
+			const sorted = sortRecords(records, "manual", orderIndex);
+			const paths = sorted.map((r) => r.path);
+			expect(paths).toEqual([...paths].sort());
+		});
+
+		it("works without index map (all items at end, sorted by path)", () => {
+			const sorted = sortRecords(records, "manual");
+			const paths = sorted.map((r) => r.path);
+			expect(paths).toEqual([...paths].sort());
+		});
+	});
 });
