@@ -6,7 +6,8 @@ export type SortMode =
 	| "created-new"
 	| "created-old"
 	| "extension"
-	| "size";
+	| "size"
+	| "manual";
 
 export type GroupMode =
 	| "none"

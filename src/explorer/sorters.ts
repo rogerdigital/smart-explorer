@@ -6,7 +6,7 @@ function comparePath(a: FileRecord, b: FileRecord): number {
 	return a.path.localeCompare(b.path, undefined, collatorOpts);
 }
 
-const sortFns: Record<SortMode, (a: FileRecord, b: FileRecord) => number> = {
+const sortFns: Record<Exclude<SortMode, "manual">, (a: FileRecord, b: FileRecord) => number> = {
 	"name-asc": (a, b) => a.basename.localeCompare(b.basename, undefined, collatorOpts) || comparePath(a, b),
 	"name-desc": (a, b) => b.basename.localeCompare(a.basename, undefined, collatorOpts) || comparePath(a, b),
 	"modified-new": (a, b) => b.mtime - a.mtime || comparePath(a, b),
@@ -17,6 +17,17 @@ const sortFns: Record<SortMode, (a: FileRecord, b: FileRecord) => number> = {
 	"size": (a, b) => b.size - a.size || comparePath(a, b),
 };
 
-export function sortRecords(records: FileRecord[], mode: SortMode): FileRecord[] {
+export function sortRecords(
+	records: FileRecord[],
+	mode: SortMode,
+	manualOrderIndex?: Map<string, number>,
+): FileRecord[] {
+	if (mode === "manual") {
+		return [...records].sort((a, b) => {
+			const ai = manualOrderIndex?.get(a.path) ?? Infinity;
+			const bi = manualOrderIndex?.get(b.path) ?? Infinity;
+			return ai - bi || comparePath(a, b);
+		});
+	}
 	return [...records].sort(sortFns[mode]);
 }

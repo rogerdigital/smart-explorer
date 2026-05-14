@@ -2,6 +2,7 @@ import { ItemView, Menu, Platform, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
+import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
 import type { PreviewData } from "./preview";
@@ -31,6 +32,9 @@ export class SmartExplorerView extends ItemView {
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
+	private dragSortManager: DragSortManager | null = null;
+	private manualOrderIndex: Map<string, number> = new Map();
+	private saveOrderTimeout: number | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
@@ -94,10 +98,15 @@ export class SmartExplorerView extends ItemView {
 			this.virtualList.destroy();
 			this.virtualList = null;
 		}
+		if (this.dragSortManager) {
+			this.dragSortManager.destroy();
+			this.dragSortManager = null;
+		}
 		this.listContainer = null;
 		this.previewPanel = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
+		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
 	}
 
 	private registerVaultEvents() {
@@ -106,6 +115,11 @@ export class SmartExplorerView extends ItemView {
 		this.registerEvent(events.on("create", (file) => {
 			if (file instanceof TFile) {
 				this.fileIndex.addFile(file);
+				const order = this.plugin.settings.manualOrder;
+				if (order.length > 0 && !order.includes(file.path)) {
+					order.push(file.path);
+					this.buildManualOrderIndex();
+				}
 				this.scheduleRebuild();
 			}
 		}));
@@ -126,6 +140,12 @@ export class SmartExplorerView extends ItemView {
 				this.fileIndex.addFile(file);
 				if (this.selectedPath === oldPath) {
 					this.selectedPath = file.path;
+				}
+				const order = this.plugin.settings.manualOrder;
+				const idx = order.indexOf(oldPath);
+				if (idx >= 0) {
+					order[idx] = file.path;
+					this.buildManualOrderIndex();
 				}
 				this.scheduleRebuild();
 			}
@@ -277,6 +297,10 @@ export class SmartExplorerView extends ItemView {
 			this.virtualList.destroy();
 			this.virtualList = null;
 		}
+		if (this.dragSortManager) {
+			this.dragSortManager.destroy();
+			this.dragSortManager = null;
+		}
 		this.listContainer.empty();
 		this.listContainer.setAttribute("role", "listbox");
 
@@ -295,7 +319,11 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 
-		const sections = buildSections(records, this.query);
+		if (this.query.sort === "manual") {
+			this.initializeManualOrder(records);
+		}
+
+		const sections = buildSections(records, this.query, this.manualOrderIndex);
 
 		if (sections.length === 0 || sections.every((s) => s.records.length === 0)) {
 			const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty" });
@@ -326,6 +354,7 @@ export class SmartExplorerView extends ItemView {
 
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
+		const isManualSort = this.query.sort === "manual";
 
 		if (useVirtual) {
 			const allRecords = sections[0]!.records;
@@ -341,6 +370,31 @@ export class SmartExplorerView extends ItemView {
 				for (const record of section.records) {
 					this.listContainer.appendChild(this.createRowElement(record));
 				}
+			}
+		}
+
+		if (isManualSort && this.listContainer) {
+			const rowHeight = Platform.isMobile ? 44 : 28;
+			this.dragSortManager = new DragSortManager(this.listContainer, {
+				getRowHeight: () => rowHeight,
+				onReorder: (path, toIndex, sectionId) => this.handleManualReorder(path, toIndex, sections, sectionId),
+			});
+			this.dragSortManager.enable();
+
+			// Attach drag handlers to rendered rows
+			for (const section of sections) {
+				for (const record of section.records) {
+					const row = this.listContainer.querySelector(
+						`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
+					) as HTMLElement | null;
+					if (row) {
+						this.dragSortManager.attachRow(row, record.path, section.id);
+					}
+				}
+			}
+
+			if (this.virtualList) {
+				this.virtualList.onAfterRender = () => this.dragSortManager?.reapplyDragClass();
 			}
 		}
 
@@ -394,17 +448,19 @@ export class SmartExplorerView extends ItemView {
 			this.showContextMenu(e, record);
 		});
 
-		row.draggable = true;
-		row.addEventListener("dragstart", (e) => {
-			e.dataTransfer?.setData("text/plain", record.path);
-			e.dataTransfer?.setData("text/uri-list", record.path);
-			const app = this.app as unknown as { dragManager?: { handleDrag?: (e: DragEvent, info: Record<string, unknown>) => void } };
-			app.dragManager?.handleDrag?.(e, {
-				source: "smart-explorer",
-				type: "file",
-				file: this.app.vault.getAbstractFileByPath(record.path),
+		if (this.query.sort !== "manual") {
+			row.draggable = true;
+			row.addEventListener("dragstart", (e) => {
+				e.dataTransfer?.setData("text/plain", record.path);
+				e.dataTransfer?.setData("text/uri-list", record.path);
+				const app = this.app as unknown as { dragManager?: { handleDrag?: (e: DragEvent, info: Record<string, unknown>) => void } };
+				app.dragManager?.handleDrag?.(e, {
+					source: "smart-explorer",
+					type: "file",
+					file: this.app.vault.getAbstractFileByPath(record.path),
+				});
 			});
-		});
+		}
 
 		return row;
 	}
@@ -412,6 +468,90 @@ export class SmartExplorerView extends ItemView {
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+	}
+
+	private buildManualOrderIndex() {
+		this.manualOrderIndex = new Map(
+			this.plugin.settings.manualOrder.map((p, i) => [p, i]),
+		);
+	}
+
+	private initializeManualOrder(records: FileRecord[]) {
+		const order = this.plugin.settings.manualOrder;
+		if (order.length === 0) {
+			const currentSorted = buildSections(records, {
+				...this.query,
+				sort: this.plugin.settings.defaultSort === "manual" ? "name-asc" : this.plugin.settings.defaultSort,
+			});
+			for (const section of currentSorted) {
+				for (const r of section.records) {
+					order.push(r.path);
+				}
+			}
+			this.scheduleSaveOrder();
+		}
+		this.buildManualOrderIndex();
+	}
+
+	private handleManualReorder(
+		draggedPath: string,
+		toIndex: number,
+		sections: { id: string; records: FileRecord[] }[],
+		sectionId?: string,
+	) {
+		const order = this.plugin.settings.manualOrder;
+		const fromGlobal = order.indexOf(draggedPath);
+		if (fromGlobal >= 0) {
+			order.splice(fromGlobal, 1);
+		}
+
+		// Compute global insertion position
+		let targetGlobal: number;
+		if (sectionId && this.query.group !== "none") {
+			const section = sections.find((s) => s.id === sectionId);
+			if (section && section.records.length > 0) {
+				const clampedIdx = Math.min(toIndex, section.records.length);
+				if (clampedIdx >= section.records.length) {
+					const lastPath = section.records[section.records.length - 1]!.path;
+					const lastGlobal = order.indexOf(lastPath);
+					targetGlobal = lastGlobal >= 0 ? lastGlobal + 1 : order.length;
+				} else {
+					const targetPath = section.records[clampedIdx]!.path;
+					const targetPos = order.indexOf(targetPath);
+					targetGlobal = targetPos >= 0 ? targetPos : order.length;
+				}
+			} else {
+				targetGlobal = order.length;
+			}
+		} else {
+			// Flat mode: toIndex maps directly
+			const allRecords = sections.flatMap((s) => s.records);
+			const clampedIdx = Math.min(toIndex, allRecords.length);
+			if (clampedIdx >= allRecords.length) {
+				targetGlobal = order.length;
+			} else {
+				const targetPath = allRecords[clampedIdx]!.path;
+				const targetPos = order.indexOf(targetPath);
+				targetGlobal = targetPos >= 0 ? targetPos : order.length;
+			}
+		}
+
+		order.splice(targetGlobal, 0, draggedPath);
+		this.buildManualOrderIndex();
+		this.renderList();
+		this.scheduleSaveOrder();
+	}
+
+	private scheduleSaveOrder() {
+		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
+		this.saveOrderTimeout = window.setTimeout(() => {
+			// Prune deleted paths
+			const allPaths = new Set(this.fileIndex.getAll().map((r) => r.path));
+			this.plugin.settings.manualOrder = this.plugin.settings.manualOrder.filter(
+				(p) => allPaths.has(p),
+			);
+			void this.plugin.saveSettings();
+		}, 500);
 	}
 
 	private showContextMenu(e: MouseEvent, record: FileRecord) {
