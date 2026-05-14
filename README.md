@@ -4,7 +4,7 @@ A side-pane file explorer for [Obsidian](https://obsidian.md) with flexible sort
 
 Built for vaults with hundreds or thousands of notes where the default file tree falls short.
 
-![Smart Explorer](./docs/screenshots/smart-explorer-right-panel.png)
+<img src="./docs/screenshots/smart-explorer-right-panel.png" width="360" alt="Smart Explorer" />
 
 ## Features
 
