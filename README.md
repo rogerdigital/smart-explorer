@@ -1,87 +1,59 @@
 # Smart Explorer
 
-An alternative Obsidian side-pane file explorer with custom sorting, grouping, filtering, and lightweight previews.
+A side-pane file explorer for [Obsidian](https://obsidian.md) with flexible sorting, grouping, filtering, and inline previews.
 
-Designed for users with large vaults who need faster, more flexible navigation than the default file tree.
+Built for vaults with hundreds or thousands of notes where the default file tree falls short.
 
 ![Smart Explorer](./docs/screenshots/smart-explorer-right-panel.png)
 
 ## Features
 
-**Sorting** — Sort files by:
-- Name (A-Z / Z-A)
-- Modified date (newest / oldest)
-- Created date (newest / oldest)
-- File extension
-- File size
-
-**Grouping** — Group files by:
-- Folder
-- File extension
-- Modified month
-- Top-level folder
-
-**Filtering** — Narrow results with:
-- Search by file name or path
-- Markdown-only toggle
-- Attachments-only toggle
-- Modified within last day / 7 days / 30 days
-
-**Preview Panel** — See file context without opening:
-- Markdown: first heading and tags
-- Images: thumbnail preview
-- Other files: type, size, and modified date
-
-**Settings** — Persist defaults:
-- Default sort and group mode
-- Preview panel on/off
-- Hidden file extensions
+| Category | Options |
+|----------|---------|
+| **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size |
+| **Group** | Folder, extension, modified month, top-level folder |
+| **Filter** | Search by name/path, markdown-only, attachments-only, date range (1d / 7d / 30d) |
+| **Preview** | Headings & tags for markdown, thumbnails for images, metadata for other files |
+| **Settings** | Default sort/group mode, preview panel toggle, hidden extensions |
 
 ## Installation
 
+### Community Plugins (recommended)
+
+1. Open **Settings → Community Plugins → Browse**
+2. Search for **Smart Explorer**
+3. Click **Install**, then **Enable**
+
 ### Manual
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](../../releases)
-2. Create a folder named `smart-explorer` in your vault's `.obsidian/plugins/` directory
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/rogerdigital/smart-explorer/releases)
+2. Create `.obsidian/plugins/smart-explorer/` in your vault
 3. Copy the three files into that folder
-4. Enable the plugin in Obsidian Settings → Community Plugins
-
-### From source
-
-```bash
-git clone https://github.com/rogerdigital/smart-explorer.git
-cd smart-explorer
-npm install
-npm run build
-```
-
-Then copy `main.js`, `manifest.json`, and `styles.css` to your vault's plugin folder.
+4. Enable in **Settings → Community Plugins**
 
 ## Usage
 
-1. Open via the ribbon icon (compass icon) or Command Palette → `Smart Explorer: Open`
-2. Use the toolbar to sort, group, and filter files
-3. Click a file to open it; the preview panel updates with file context
-4. Configure defaults in Settings → Community Plugins → Smart Explorer
+1. Open via ribbon icon or Command Palette → **Smart Explorer: Open**
+2. Toolbar controls sorting, grouping, and filtering
+3. Click a file to open; preview panel shows context alongside the file list
+4. Defaults persist in **Settings → Community Plugins → Smart Explorer**
+
+## Compatibility
+
+- Obsidian ≥ 1.7.2
+- Desktop and mobile
 
 ## Privacy
 
-This plugin does not make any network requests. All data stays local in your vault.
-
-## Limitations
-
-- Read-only: no file rename, move, or delete operations
-- No drag-and-drop support
-- No custom manual ordering
-- No full-text content search
+No network requests. All data stays local in your vault.
 
 ## Development
 
 ```bash
 npm install       # install dependencies
-npm run dev       # watch mode for development
-npm run build     # production build
-npm test          # run unit tests
+npm run dev       # watch mode
+npm run build     # type-check + production build
+npm test          # unit tests
 ```
 
 ## License
