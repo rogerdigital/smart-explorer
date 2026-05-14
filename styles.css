@@ -427,3 +427,18 @@ body.is-tablet .smart-explorer-filter-toggle {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* Instant tooltip */
+.smart-explorer-tooltip {
+	position: fixed;
+	padding: 4px 8px;
+	border-radius: 4px;
+	background: var(--background-modifier-message);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	white-space: pre;
+	z-index: var(--layer-tooltip);
+	pointer-events: none;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	max-width: 300px;
+}
