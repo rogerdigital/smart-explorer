@@ -384,9 +384,9 @@ export class SmartExplorerView extends ItemView {
 			// Attach drag handlers to rendered rows
 			for (const section of sections) {
 				for (const record of section.records) {
-					const row = this.listContainer.querySelector(
+					const row = this.listContainer.querySelector<HTMLElement>(
 						`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
-					) as HTMLElement | null;
+					);
 					if (row) {
 						this.dragSortManager.attachRow(row, record.path, section.id);
 					}

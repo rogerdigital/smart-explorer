@@ -32,9 +32,6 @@ export class DragSortManager {
 		this.opts = opts;
 		this.indicator = createDiv({ cls: "smart-explorer-drop-indicator" });
 		this.container.appendChild(this.indicator);
-		this.handleDragOver = this.handleDragOver.bind(this);
-		this.handleDrop = this.handleDrop.bind(this);
-		this.handleDragLeave = this.handleDragLeave.bind(this);
 	}
 
 	enable() {
@@ -153,7 +150,7 @@ export class DragSortManager {
 
 		this.ghost = createDiv({ cls: "smart-explorer-drag-ghost" });
 		this.ghost.setText(row.querySelector(".smart-explorer-row-name")?.textContent ?? "");
-		document.body.appendChild(this.ghost);
+		activeDocument.body.appendChild(this.ghost);
 		this.positionGhost(x, y);
 		this.updateIndicatorFromClientY(y);
 	}
@@ -194,24 +191,24 @@ export class DragSortManager {
 		}
 	}
 
-	private handleDragOver(e: DragEvent) {
+	private handleDragOver = (e: DragEvent) => {
 		if (!this.draggedPath) return;
 		e.preventDefault();
 		e.dataTransfer!.dropEffect = "move";
 		this.updateIndicatorFromClientY(e.clientY);
 		this.handleAutoScroll(e.clientY);
-	}
+	};
 
-	private handleDrop(e: DragEvent) {
+	private handleDrop = (e: DragEvent) => {
 		e.preventDefault();
 		if (!this.draggedPath) return;
 		const dropIndex = this.getDropIndexFromClientY(e.clientY);
 		const sectionId = this.getSectionAtIndex(dropIndex);
 		this.opts.onReorder(this.draggedPath, dropIndex, sectionId);
 		this.cleanup();
-	}
+	};
 
-	private handleDragLeave(e: DragEvent) {
+	private handleDragLeave = (e: DragEvent) => {
 		const rect = this.container.getBoundingClientRect();
 		if (
 			e.clientX < rect.left || e.clientX > rect.right ||
@@ -220,7 +217,7 @@ export class DragSortManager {
 			this.hideIndicator();
 			this.stopAutoScroll();
 		}
-	}
+	};
 
 	private updateIndicatorFromClientY(clientY: number) {
 		const dropIndex = this.getDropIndexFromClientY(clientY);
