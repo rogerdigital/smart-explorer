@@ -1,5 +1,6 @@
 .DS_Store
 node_modules/
 main.js
+data.json
 .claude/
 .playwright-mcp/
