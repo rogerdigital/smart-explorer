@@ -16,6 +16,10 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 | **Preview** | Headings & tags for markdown, thumbnails for images, metadata for other files |
 | **Settings** | Default sort/group mode, preview panel toggle, hidden extensions, reset manual order |
 
+### Manual Drag-and-Drop Sorting
+
+Switch to **Manual** sort mode, then drag files to reorder them exactly how you want. The custom order is saved per vault and persists across sessions. Works on both desktop and mobile (long-press to drag).
+
 ## Installation
 
 ### Community Plugins (recommended)
