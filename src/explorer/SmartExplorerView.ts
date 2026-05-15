@@ -572,7 +572,9 @@ export class SmartExplorerView extends ItemView {
 
 		order.splice(targetGlobal, 0, draggedPath);
 		this.buildManualOrderIndex();
+		const scrollTop = this.listContainer?.scrollTop ?? 0;
 		this.renderList();
+		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
 		this.scheduleSaveOrder();
 	}
 
