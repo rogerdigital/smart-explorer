@@ -1,10 +1,10 @@
 # Smart Explorer
 
-A side-pane file explorer for [Obsidian](https://obsidian.md) with flexible sorting, grouping, filtering, and inline previews.
+A smarter side-pane explorer for browsing, filtering, previewing, and manually sorting your [Obsidian](https://obsidian.md) files.
 
-Built for vaults with hundreds or thousands of notes where the default file tree falls short.
+Built for vaults with hundreds or thousands of notes where the default file tree falls short, especially project folders that need a human priority order instead of only alphabetical sorting.
 
-<img src="./docs/screenshots/smart-explorer-right-panel.png" width="360" alt="Smart Explorer" />
+![Smart Explorer manual sorting](docs/images/smart-explorer-manual-sort.gif)
 
 ## Features
 
