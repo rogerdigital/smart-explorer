@@ -178,29 +178,26 @@ export class SmartExplorerView extends ItemView {
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
 		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => { this.query.sort = v as SortMode; this.renderList(); });
 		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
+		row2.classList.add("is-collapsed");
+
+		const filterToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-filter-toggle",
+			text: "Filters",
+		});
+		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
+		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		filterToggleBtn.addEventListener("click", () => {
+			row2.classList.toggle("is-collapsed");
+			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
+		});
 
 		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
-		this.extSelect = this.createSelect(row1, extOptions, "smart-explorer-ext", (v) => {
+		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
 			this.query.extension = v || null;
 			this.renderList();
 		});
 		this.populateExtensions(this.extSelect);
-
-		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
-
-		if (Platform.isMobile) {
-			row2.classList.add("is-collapsed");
-			const filterToggleBtn = row1.createEl("button", {
-				cls: "smart-explorer-filter-toggle",
-				text: "⚙",
-			});
-			filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
-			filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
-			filterToggleBtn.addEventListener("click", () => {
-				row2.classList.toggle("is-collapsed");
-				filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
-			});
-		}
 
 		this.createSelect(
 			row2,
@@ -569,15 +566,6 @@ export class SmartExplorerView extends ItemView {
 		menu.addItem((item) =>
 			item.setTitle("Copy path").setIcon("copy").onClick(() => {
 				void navigator.clipboard.writeText(record.path);
-			}),
-		);
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item.setTitle("Delete").setIcon("trash").onClick(() => {
-				const file = this.app.vault.getAbstractFileByPath(record.path);
-				if (file instanceof TFile) {
-					void this.app.fileManager.trashFile(file);
-				}
 			}),
 		);
 		menu.showAtMouseEvent(e);

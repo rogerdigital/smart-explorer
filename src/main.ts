@@ -41,9 +41,9 @@ export default class SmartExplorerPlugin extends Plugin {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(SMART_EXPLORER_VIEW_TYPE)[0];
 		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (!rightLeaf) return;
-			leaf = rightLeaf;
+			const leftLeaf = workspace.getLeftLeaf(false);
+			if (!leftLeaf) return;
+			leaf = leftLeaf;
 			await leaf.setViewState({
 				type: SMART_EXPLORER_VIEW_TYPE,
 				active: true,
