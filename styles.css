@@ -71,6 +71,11 @@
 	background: var(--background-modifier-hover);
 }
 
+.smart-explorer-toolbar button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
 .smart-explorer-toolbar button.is-active {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
@@ -105,6 +110,14 @@
 
 .smart-explorer-row:hover {
 	background: var(--background-modifier-hover);
+}
+
+.smart-explorer-row.is-order-editable {
+	cursor: grab;
+}
+
+.smart-explorer-row.is-order-editable:active {
+	cursor: grabbing;
 }
 
 .smart-explorer-row.is-selected {

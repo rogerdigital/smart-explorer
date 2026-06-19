@@ -4,6 +4,7 @@ import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
+import { reorderManualOrder } from "./manualOrder";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -23,12 +24,16 @@ export class SmartExplorerView extends ItemView {
 	private listContainer: HTMLElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
+	private manualEditBtn: HTMLButtonElement | null = null;
+	private manualUndoBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
+	private manualOrderEditing = false;
+	private manualOrderUndoStack: string[][] = [];
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
 
@@ -96,6 +101,8 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
+		this.manualEditBtn = null;
+		this.manualUndoBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -176,7 +183,14 @@ export class SmartExplorerView extends ItemView {
 		});
 
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
-		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => { this.query.sort = v as SortMode; this.renderList(); });
+		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => {
+			this.query.sort = v as SortMode;
+			if (this.query.sort !== "manual") {
+				this.manualOrderEditing = false;
+			}
+			this.updateManualOrderControls();
+			this.renderList();
+		});
 		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		row2.classList.add("is-collapsed");
@@ -191,6 +205,27 @@ export class SmartExplorerView extends ItemView {
 			row2.classList.toggle("is-collapsed");
 			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
 		});
+
+		this.manualEditBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-edit",
+			text: "Edit order",
+		});
+		this.manualEditBtn.addEventListener("mouseenter", (e) => this.showTooltip("Enable manual drag sorting", e));
+		this.manualEditBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualEditBtn.addEventListener("click", () => {
+			if (this.query.sort !== "manual") return;
+			this.manualOrderEditing = !this.manualOrderEditing;
+			this.updateManualOrderControls();
+			this.renderList();
+		});
+
+		this.manualUndoBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-undo",
+			text: "Undo",
+		});
+		this.manualUndoBtn.addEventListener("mouseenter", (e) => this.showTooltip("Undo last manual reorder", e));
+		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
 
 		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
 		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
@@ -227,6 +262,7 @@ export class SmartExplorerView extends ItemView {
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
 		this.updateToggleStates(row2);
+		this.updateManualOrderControls();
 	}
 
 	private createSelect(
@@ -264,6 +300,21 @@ export class SmartExplorerView extends ItemView {
 		const attachBtn = row.querySelector(".smart-explorer-toggle-attach");
 		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
 		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
+	}
+
+	private updateManualOrderControls() {
+		const isManualSort = this.query.sort === "manual";
+		if (this.manualEditBtn) {
+			this.manualEditBtn.disabled = !isManualSort;
+			this.manualEditBtn.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
+			this.manualEditBtn.setText(this.manualOrderEditing ? "Done" : "Edit order");
+		}
+		if (this.manualUndoBtn) {
+			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
+		}
+		if (this.listContainer) {
+			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
+		}
 	}
 
 	private populateExtensions(select: HTMLSelectElement) {
@@ -324,6 +375,7 @@ export class SmartExplorerView extends ItemView {
 					attachmentsOnly: false,
 					modifiedWithinDays: null,
 				};
+				this.manualOrderEditing = false;
 				const container = this.containerEl.children[1] as HTMLElement;
 				container.empty();
 				container.classList.add("smart-explorer");
@@ -356,7 +408,7 @@ export class SmartExplorerView extends ItemView {
 			}
 		}
 
-		if (isManualSort && this.listContainer) {
+		if (isManualSort && this.manualOrderEditing && this.listContainer) {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
@@ -382,6 +434,7 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		this.updateFileCount(displayed, records.length);
+		this.updateManualOrderControls();
 	}
 
 	private createRowElement(record: FileRecord): HTMLElement {
@@ -391,6 +444,9 @@ export class SmartExplorerView extends ItemView {
 		row.setAttribute("role", "option");
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
+		}
+		if (this.query.sort === "manual" && this.manualOrderEditing) {
+			row.classList.add("is-order-editable");
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		if (record.extension) {
@@ -496,49 +552,41 @@ export class SmartExplorerView extends ItemView {
 		sections: { id: string; records: FileRecord[] }[],
 		sectionId?: string,
 	) {
+		if (!this.manualOrderEditing) return;
 		const order = this.plugin.settings.manualOrder;
-		const fromGlobal = order.indexOf(draggedPath);
-		if (fromGlobal >= 0) {
-			order.splice(fromGlobal, 1);
+		const nextOrder = reorderManualOrder(
+			order,
+			draggedPath,
+			toIndex,
+			sections,
+			this.query.group,
+			sectionId,
+		);
+		if (nextOrder.join("\n") === order.join("\n")) return;
+		this.manualOrderUndoStack.push([...order]);
+		if (this.manualOrderUndoStack.length > 20) {
+			this.manualOrderUndoStack.shift();
 		}
-
-		// Compute global insertion position
-		let targetGlobal: number;
-		if (sectionId && this.query.group !== "none") {
-			const section = sections.find((s) => s.id === sectionId);
-			if (section && section.records.length > 0) {
-				const clampedIdx = Math.min(toIndex, section.records.length);
-				if (clampedIdx >= section.records.length) {
-					const lastPath = section.records[section.records.length - 1]!.path;
-					const lastGlobal = order.indexOf(lastPath);
-					targetGlobal = lastGlobal >= 0 ? lastGlobal + 1 : order.length;
-				} else {
-					const targetPath = section.records[clampedIdx]!.path;
-					const targetPos = order.indexOf(targetPath);
-					targetGlobal = targetPos >= 0 ? targetPos : order.length;
-				}
-			} else {
-				targetGlobal = order.length;
-			}
-		} else {
-			// Flat mode: toIndex maps directly
-			const allRecords = sections.flatMap((s) => s.records);
-			const clampedIdx = Math.min(toIndex, allRecords.length);
-			if (clampedIdx >= allRecords.length) {
-				targetGlobal = order.length;
-			} else {
-				const targetPath = allRecords[clampedIdx]!.path;
-				const targetPos = order.indexOf(targetPath);
-				targetGlobal = targetPos >= 0 ? targetPos : order.length;
-			}
-		}
-
-		order.splice(targetGlobal, 0, draggedPath);
+		this.plugin.settings.manualOrder = nextOrder;
 		this.buildManualOrderIndex();
 		const scrollTop = this.listContainer?.scrollTop ?? 0;
 		this.renderList();
 		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
 		this.scheduleSaveOrder();
+		this.updateManualOrderControls();
+	}
+
+	private undoManualReorder() {
+		if (this.query.sort !== "manual") return;
+		const previousOrder = this.manualOrderUndoStack.pop();
+		if (!previousOrder) return;
+		this.plugin.settings.manualOrder = previousOrder;
+		this.buildManualOrderIndex();
+		const scrollTop = this.listContainer?.scrollTop ?? 0;
+		this.renderList();
+		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
+		this.scheduleSaveOrder();
+		this.updateManualOrderControls();
 	}
 
 	private scheduleSaveOrder() {

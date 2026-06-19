@@ -17,7 +17,7 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 
 ### Manual Drag-and-Drop Sorting
 
-Switch to **Manual** sort mode, then drag files to reorder them exactly how you want. The custom order is saved per vault and persists across sessions. Works on both desktop and mobile (long-press to drag).
+Switch to **Manual** sort mode, click **Edit order**, then drag files to reorder them exactly how you want. Use **Undo** to revert the last reorder. The custom order is saved per vault and persists across sessions. Works on both desktop and mobile (long-press to drag).
 
 ## Installation
 
