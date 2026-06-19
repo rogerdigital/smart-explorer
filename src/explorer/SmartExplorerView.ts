@@ -5,6 +5,7 @@ import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { reorderManualOrder } from "./manualOrder";
+import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -21,6 +22,7 @@ export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
+	private activeSavedViewId: string | null = null;
 	private listContainer: HTMLElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
@@ -70,17 +72,22 @@ export class SmartExplorerView extends ItemView {
 		container.empty();
 		container.classList.add("smart-explorer");
 
-		this.renderToolbar(container);
-
-		const body = container.createDiv({ cls: "smart-explorer-body" });
-		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-
+		this.renderShell(container);
 		this.showIndexing();
 		await new Promise((r) => window.setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
 
 		this.registerVaultEvents();
+	}
+
+	private renderShell(container: HTMLElement) {
+		container.empty();
+		container.classList.add("smart-explorer");
+		this.renderToolbar(container);
+
+		const body = container.createDiv({ cls: "smart-explorer-body" });
+		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
 	}
 
 	private showIndexing() {
@@ -174,24 +181,34 @@ export class SmartExplorerView extends ItemView {
 			placeholder: "Search files...",
 			cls: "smart-explorer-search",
 		});
+		searchInput.value = this.query.searchText;
 		searchInput.addEventListener("input", () => {
 			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 			this.searchTimeout = window.setTimeout(() => {
 				this.query.searchText = searchInput.value;
+				this.activeSavedViewId = null;
 				this.renderList();
 			}, 200);
 		});
 
+		const presetRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-preset-row" });
+		this.renderSavedViewControls(presetRow);
+
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
 		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => {
 			this.query.sort = v as SortMode;
+			this.activeSavedViewId = null;
 			if (this.query.sort !== "manual") {
 				this.manualOrderEditing = false;
 			}
 			this.updateManualOrderControls();
 			this.renderList();
-		});
-		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
+		}, this.query.sort);
+		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => {
+			this.query.group = v as GroupMode;
+			this.activeSavedViewId = null;
+			this.renderList();
+		}, this.query.group);
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		row2.classList.add("is-collapsed");
 
@@ -230,8 +247,9 @@ export class SmartExplorerView extends ItemView {
 		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
 		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
 			this.query.extension = v || null;
+			this.activeSavedViewId = null;
 			this.renderList();
-		});
+		}, this.query.extension ?? "");
 		this.populateExtensions(this.extSelect);
 
 		this.createSelect(
@@ -241,12 +259,15 @@ export class SmartExplorerView extends ItemView {
 			(v) => {
 				const opt = MODIFIED_RANGE_OPTIONS.find((o) => o.value === v);
 				this.query.modifiedWithinDays = opt?.days ?? null;
+				this.activeSavedViewId = null;
 				this.renderList();
 			},
+			this.modifiedRangeValue(),
 		);
 
 		this.createToggle(row2, "MD", "smart-explorer-toggle-md", () => {
 			this.query.markdownOnly = !this.query.markdownOnly;
+			this.activeSavedViewId = null;
 			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
@@ -254,6 +275,7 @@ export class SmartExplorerView extends ItemView {
 
 		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
 			this.query.attachmentsOnly = !this.query.attachmentsOnly;
+			this.activeSavedViewId = null;
 			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
@@ -270,13 +292,85 @@ export class SmartExplorerView extends ItemView {
 		options: { value: string; text: string }[],
 		cls: string,
 		onChange: (value: string) => void,
+		value?: string,
 	) {
 		const select = parent.createEl("select", { cls });
 		for (const opt of options) {
 			select.createEl("option", { value: opt.value, text: opt.text });
 		}
+		if (value !== undefined) select.value = value;
 		select.addEventListener("change", () => onChange(select.value));
 		return select;
+	}
+
+	private renderSavedViewControls(parent: HTMLElement) {
+		const options = getSavedViewOptions(this.plugin.settings.savedViews);
+		const select = parent.createEl("select", { cls: "smart-explorer-saved-view" });
+		select.createEl("option", { value: "", text: "Custom view" });
+		for (const view of options) {
+			select.createEl("option", { value: view.id, text: view.name });
+		}
+		select.value = this.activeSavedViewId ?? "";
+		select.addEventListener("change", () => {
+			const selected = options.find((view) => view.id === select.value);
+			if (!selected) {
+				this.activeSavedViewId = null;
+				return;
+			}
+			this.activeSavedViewId = selected.id;
+			this.query = cloneSavedViewQuery(selected.query);
+			this.manualOrderEditing = false;
+			this.rebuildView();
+		});
+
+		const saveBtn = parent.createEl("button", {
+			cls: "smart-explorer-save-view",
+			text: "Save",
+		});
+		saveBtn.addEventListener("mouseenter", (e) => this.showTooltip("Save current view", e));
+		saveBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		saveBtn.addEventListener("click", () => {
+			const name = activeWindow.prompt("Save view name", "");
+			if (!name || name.trim().length === 0) return;
+			const view = {
+				id: `custom-${Date.now()}`,
+				name: name.trim(),
+				query: cloneSavedViewQuery(this.query),
+			};
+			this.plugin.settings.savedViews.push(view);
+			this.activeSavedViewId = view.id;
+			void this.plugin.saveSettings();
+			this.rebuildView();
+		});
+
+		const deleteBtn = parent.createEl("button", {
+			cls: "smart-explorer-delete-view",
+			text: "Delete",
+		});
+		const isCustomView = this.activeSavedViewId?.startsWith("custom-") ?? false;
+		deleteBtn.disabled = !isCustomView;
+		deleteBtn.addEventListener("mouseenter", (e) => this.showTooltip("Delete saved view", e));
+		deleteBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		deleteBtn.addEventListener("click", () => {
+			if (!this.activeSavedViewId?.startsWith("custom-")) return;
+			this.plugin.settings.savedViews = this.plugin.settings.savedViews.filter(
+				(view) => view.id !== this.activeSavedViewId,
+			);
+			this.activeSavedViewId = null;
+			void this.plugin.saveSettings();
+			this.rebuildView();
+		});
+	}
+
+	private rebuildView() {
+		const container = this.containerEl.children[1] as HTMLElement;
+		this.renderShell(container);
+		this.renderList();
+	}
+
+	private modifiedRangeValue(): string {
+		const option = MODIFIED_RANGE_OPTIONS.find((o) => o.days === this.query.modifiedWithinDays);
+		return option?.value ?? "all";
 	}
 
 	private createToggle(
@@ -318,7 +412,7 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private populateExtensions(select: HTMLSelectElement) {
-		const currentValue = select.value;
+		const currentValue = this.query.extension ?? select.value;
 		while (select.options.length > 1) select.remove(1);
 		const extensions = this.fileIndex.getExtensions();
 		for (const ext of extensions) {
@@ -376,12 +470,9 @@ export class SmartExplorerView extends ItemView {
 					modifiedWithinDays: null,
 				};
 				this.manualOrderEditing = false;
+				this.activeSavedViewId = null;
 				const container = this.containerEl.children[1] as HTMLElement;
-				container.empty();
-				container.classList.add("smart-explorer");
-				this.renderToolbar(container);
-				const body = container.createDiv({ cls: "smart-explorer-body" });
-				this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+				this.renderShell(container);
 				this.renderList();
 			});
 			return;
