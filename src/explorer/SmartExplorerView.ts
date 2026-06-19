@@ -6,6 +6,7 @@ import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
+import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -26,6 +27,8 @@ export class SmartExplorerView extends ItemView {
 	private listContainer: HTMLElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
+	private searchInput: HTMLInputElement | null = null;
+	private filterRow: HTMLElement | null = null;
 	private manualEditBtn: HTMLButtonElement | null = null;
 	private manualUndoBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
@@ -108,6 +111,8 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
+		this.searchInput = null;
+		this.filterRow = null;
 		this.manualEditBtn = null;
 		this.manualUndoBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
@@ -181,6 +186,7 @@ export class SmartExplorerView extends ItemView {
 			placeholder: "Search files...",
 			cls: "smart-explorer-search",
 		});
+		this.searchInput = searchInput;
 		searchInput.value = this.query.searchText;
 		searchInput.addEventListener("input", () => {
 			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
@@ -210,6 +216,7 @@ export class SmartExplorerView extends ItemView {
 			this.renderList();
 		}, this.query.group);
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
+		this.filterRow = row2;
 		row2.classList.add("is-collapsed");
 
 		const filterToggleBtn = row1.createEl("button", {
@@ -285,6 +292,7 @@ export class SmartExplorerView extends ItemView {
 
 		this.updateToggleStates(row2);
 		this.updateManualOrderControls();
+		this.registerKeyboardShortcuts(container);
 	}
 
 	private createSelect(
@@ -371,6 +379,32 @@ export class SmartExplorerView extends ItemView {
 	private modifiedRangeValue(): string {
 		const option = MODIFIED_RANGE_OPTIONS.find((o) => o.days === this.query.modifiedWithinDays);
 		return option?.value ?? "all";
+	}
+
+	private registerKeyboardShortcuts(container: HTMLElement) {
+		container.onkeydown = (e) => {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+				e.preventDefault();
+				this.searchInput?.focus();
+				this.searchInput?.select();
+				return;
+			}
+
+			if (e.key === "Escape") {
+				if (this.query.searchText) {
+					e.preventDefault();
+					this.query.searchText = "";
+					this.activeSavedViewId = null;
+					if (this.searchInput) this.searchInput.value = "";
+					this.renderList();
+					return;
+				}
+				if (this.filterRow && !this.filterRow.classList.contains("is-collapsed")) {
+					e.preventDefault();
+					this.filterRow.classList.add("is-collapsed");
+				}
+			}
+		};
 	}
 
 	private createToggle(
@@ -540,6 +574,9 @@ export class SmartExplorerView extends ItemView {
 			row.classList.add("is-order-editable");
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
+		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
+		meta.createSpan({ cls: "smart-explorer-row-parent", text: formatFileParent(record.parentPath) });
+		meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(record.mtime) });
 		if (record.extension) {
 			row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		}

@@ -14,6 +14,7 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 | **Group** | Folder, extension, modified month, top-level folder |
 | **Filter** | Search by name/path, markdown-only, attachments-only, date range (1d / 7d / 30d) |
 | **Saved views** | Built-in views plus custom saved combinations of search, filters, sort, and group |
+| **Keyboard** | Focus search, clear search, move through rows, and open selected files from the keyboard |
 | **Settings** | Default sort/group mode, hidden extensions, reset manual order |
 
 ### Manual Drag-and-Drop Sorting
@@ -42,6 +43,13 @@ Switch to **Manual** sort mode, click **Edit order**, then drag files to reorder
 3. Save frequent toolbar combinations as custom views
 4. Click a file to open it in Obsidian
 5. Defaults persist in **Settings → Community Plugins → Smart Explorer**
+
+### Keyboard
+
+- `Cmd/Ctrl+F` focuses the search box
+- `Esc` clears search text or closes the filter row
+- `Arrow Up/Down` moves through file rows
+- `Enter` opens the focused file
 
 ## Compatibility
 

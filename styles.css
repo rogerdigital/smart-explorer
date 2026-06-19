@@ -3,6 +3,7 @@
 	flex-direction: column;
 	height: 100%;
 	padding: 4px;
+	container-type: inline-size;
 }
 
 .smart-explorer-toolbar {
@@ -147,10 +148,36 @@
 	min-width: 0;
 }
 
+.smart-explorer-row-meta {
+	display: none;
+	gap: 8px;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smallest);
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.smart-explorer-row-parent {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.smart-explorer-row-date {
+	flex-shrink: 0;
+}
+
 .smart-explorer-row-ext {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smallest);
 	flex-shrink: 0;
+}
+
+@container (min-width: 420px) {
+	.smart-explorer-row-meta {
+		display: flex;
+		flex: 0 1 42%;
+	}
 }
 
 .smart-explorer-toolbar-filters.is-collapsed {
