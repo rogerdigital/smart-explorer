@@ -4,8 +4,6 @@ import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
-import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
-import type { PreviewData } from "./preview";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -23,12 +21,9 @@ export class SmartExplorerView extends ItemView {
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private listContainer: HTMLElement | null = null;
-	private previewPanel: HTMLElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private selectedPath: string | null = null;
-	private previewEnabled = true;
-	private previewGeneration = 0;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
@@ -42,7 +37,6 @@ export class SmartExplorerView extends ItemView {
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
 		const settings = this.plugin.settings;
-		this.previewEnabled = Platform.isMobile ? settings.mobilePreviewEnabled : settings.previewEnabled;
 		this.query = {
 			searchText: "",
 			sort: settings.defaultSort,
@@ -75,14 +69,11 @@ export class SmartExplorerView extends ItemView {
 
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-		this.createResizeHandle(body);
-		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 
 		this.showIndexing();
 		await new Promise((r) => window.setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
-		this.renderPreview();
 
 		this.registerVaultEvents();
 	}
@@ -105,7 +96,6 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
-		this.previewPanel = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -166,7 +156,6 @@ export class SmartExplorerView extends ItemView {
 		this.rebuildTimeout = window.setTimeout(() => {
 			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
-			this.renderPreview();
 		}, 300);
 	}
 
@@ -237,16 +226,6 @@ export class SmartExplorerView extends ItemView {
 			this.updateToggleStates(row2);
 			this.renderList();
 		}, "Attachment files only");
-
-		const previewBtn = this.createToggle(row2, "Preview", "smart-explorer-toggle-preview", () => {
-			this.previewEnabled = !this.previewEnabled;
-			previewBtn.classList.toggle("is-active", this.previewEnabled);
-			if (this.previewPanel) {
-				this.previewPanel.classList.toggle("is-hidden", !this.previewEnabled);
-			}
-			this.renderPreview();
-		}, "Toggle preview panel");
-		previewBtn.classList.toggle("is-active", this.previewEnabled);
 
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
@@ -354,9 +333,7 @@ export class SmartExplorerView extends ItemView {
 				this.renderToolbar(container);
 				const body = container.createDiv({ cls: "smart-explorer-body" });
 				this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-				this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
 				this.renderList();
-				this.renderPreview();
 			});
 			return;
 		}
@@ -426,20 +403,9 @@ export class SmartExplorerView extends ItemView {
 		row.addEventListener("mouseenter", (e) => this.showTooltip(tooltipText, e));
 		row.addEventListener("mouseleave", () => this.hideTooltip());
 		const activate = () => {
-			if (Platform.isMobile && this.previewEnabled) {
-				if (this.selectedPath === record.path) {
-					void this.openFile(record.path);
-				} else {
-					this.selectedPath = record.path;
-					this.highlightSelected();
-					this.renderPreview();
-				}
-			} else {
-				this.selectedPath = record.path;
-				void this.openFile(record.path);
-				this.highlightSelected();
-				this.renderPreview();
-			}
+			this.selectedPath = record.path;
+			void this.openFile(record.path);
+			this.highlightSelected();
 		};
 		row.addEventListener("click", activate);
 		row.addEventListener("keydown", (e) => {
@@ -624,126 +590,6 @@ export class SmartExplorerView extends ItemView {
 			const row = el as HTMLElement;
 			row.classList.toggle("is-selected", row.dataset.path === this.selectedPath);
 		});
-	}
-
-	private renderPreview() {
-		if (!this.previewPanel) return;
-		this.previewPanel.empty();
-
-		if (!this.previewEnabled) {
-			this.previewPanel.classList.add("is-hidden");
-			return;
-		}
-		this.previewPanel.classList.remove("is-hidden");
-
-		if (!this.selectedPath) {
-			this.previewPanel.createDiv({
-				cls: "smart-explorer-preview-empty",
-				text: "Select a file to preview.",
-			});
-			return;
-		}
-
-		const record = this.fileIndex.get(this.selectedPath);
-		if (!record) {
-			this.previewPanel.createDiv({
-				cls: "smart-explorer-preview-empty",
-				text: "File not found.",
-			});
-			return;
-		}
-
-		const data = getPreviewData(record);
-		const gen = ++this.previewGeneration;
-		void this.renderPreviewContent(data, record, gen);
-	}
-
-	private async renderPreviewContent(data: PreviewData, record: FileRecord, gen: number) {
-		if (!this.previewPanel) return;
-
-		const header = this.previewPanel.createDiv({ cls: "smart-explorer-preview-header" });
-		header.createSpan({ cls: "smart-explorer-preview-title", text: record.basename });
-		header.createSpan({ cls: "smart-explorer-preview-path", text: record.path });
-
-		if (data.type === "markdown") {
-			if (data.heading) {
-				this.previewPanel.createDiv({
-					cls: "smart-explorer-preview-heading",
-					text: data.heading,
-				});
-			}
-
-			let paragraph: string | undefined;
-			const file = this.app.vault.getAbstractFileByPath(record.path);
-			if (file instanceof TFile) {
-				try {
-					const content = await this.app.vault.cachedRead(file);
-					if (gen !== this.previewGeneration) return;
-					paragraph = extractFirstParagraph(content);
-				} catch {
-					// file too large or unreadable, skip paragraph
-				}
-			}
-			if (paragraph) {
-				this.previewPanel.createDiv({
-					cls: "smart-explorer-preview-paragraph",
-					text: paragraph,
-				});
-			}
-
-			if (data.tags.length > 0) {
-				const tagsEl = this.previewPanel.createDiv({ cls: "smart-explorer-preview-tags" });
-				for (const tag of data.tags) {
-					tagsEl.createSpan({ cls: "smart-explorer-preview-tag", text: `#${tag}` });
-				}
-			}
-		} else if (data.type === "image") {
-			const imgContainer = this.previewPanel.createDiv({ cls: "smart-explorer-preview-image" });
-			const img = imgContainer.createEl("img");
-			const file = this.app.vault.getAbstractFileByPath(data.path);
-			if (file instanceof TFile) {
-				img.src = this.app.vault.getResourcePath(file);
-			}
-			img.alt = record.basename;
-		} else {
-			const meta = this.previewPanel.createDiv({ cls: "smart-explorer-preview-meta" });
-			meta.createDiv({ text: `Type: ${data.extension.toUpperCase()}` });
-			meta.createDiv({ text: `Size: ${formatFileSize(data.size)}` });
-			meta.createDiv({ text: `Modified: ${formatDate(data.mtime)}` });
-		}
-	}
-
-	private createResizeHandle(body: HTMLElement) {
-		const handle = body.createDiv({ cls: "smart-explorer-resize-handle" });
-		let startY = 0;
-		let startHeight = 0;
-
-		const onMove = (e: MouseEvent | TouchEvent) => {
-			const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
-			const delta = clientY - startY;
-			if (this.previewPanel) {
-				this.previewPanel.style.height = `${Math.max(60, startHeight - delta)}px`;
-			}
-		};
-
-		const onEnd = () => {
-			activeWindow.document.removeEventListener("mousemove", onMove);
-			activeWindow.document.removeEventListener("mouseup", onEnd);
-			activeWindow.document.removeEventListener("touchmove", onMove);
-			activeWindow.document.removeEventListener("touchend", onEnd);
-		};
-
-		const onStart = (e: MouseEvent | TouchEvent) => {
-			startY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
-			startHeight = this.previewPanel?.clientHeight ?? 200;
-			activeWindow.document.addEventListener("mousemove", onMove);
-			activeWindow.document.addEventListener("mouseup", onEnd);
-			activeWindow.document.addEventListener("touchmove", onMove);
-			activeWindow.document.addEventListener("touchend", onEnd);
-		};
-
-		handle.addEventListener("mousedown", onStart);
-		handle.addEventListener("touchstart", onStart);
 	}
 
 	private async openFile(path: string) {
