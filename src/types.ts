@@ -16,6 +16,8 @@ export type GroupMode =
 	| "modified-month"
 	| "top-folder";
 
+export type ViewMode = "tree" | "list";
+
 export type FileRecord = {
 	path: string;
 	basename: string;

@@ -4,10 +4,13 @@ import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
+import { buildTree } from "./TreeModel";
+import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
-import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
+import { resolveExplorerViewMode } from "./viewMode";
+import type { ExplorerQuery, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
 import { SORT_OPTIONS, GROUP_OPTIONS } from "../settings/settings-helpers";
@@ -23,8 +26,10 @@ export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
+	private viewMode: ViewMode = "tree";
 	private activeSavedViewId: string | null = null;
 	private listContainer: HTMLElement | null = null;
+	private viewModeBtn: HTMLButtonElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
@@ -111,6 +116,7 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
+		this.viewModeBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
 		this.manualEditBtn = null;
@@ -201,6 +207,16 @@ export class SmartExplorerView extends ItemView {
 		this.renderSavedViewControls(presetRow);
 
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+		this.viewModeBtn = row1.createEl("button", {
+			cls: "smart-explorer-view-mode",
+			text: this.resolvedViewMode() === "tree" ? "Tree" : "List",
+		});
+		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip("Toggle tree/list view", e));
+		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.viewModeBtn.addEventListener("click", () => {
+			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
+			this.renderList();
+		});
 		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => {
 			this.query.sort = v as SortMode;
 			this.activeSavedViewId = null;
@@ -208,6 +224,7 @@ export class SmartExplorerView extends ItemView {
 				this.manualOrderEditing = false;
 			}
 			this.updateManualOrderControls();
+			this.updateViewModeControl();
 			this.renderList();
 		}, this.query.sort);
 		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => {
@@ -291,6 +308,7 @@ export class SmartExplorerView extends ItemView {
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
 		this.updateToggleStates(row2);
+		this.updateViewModeControl();
 		this.updateManualOrderControls();
 		this.registerKeyboardShortcuts(container);
 	}
@@ -381,6 +399,10 @@ export class SmartExplorerView extends ItemView {
 		return option?.value ?? "all";
 	}
 
+	private resolvedViewMode(): ViewMode {
+		return resolveExplorerViewMode(this.viewMode, this.query.sort);
+	}
+
 	private registerKeyboardShortcuts(container: HTMLElement) {
 		container.onkeydown = (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
@@ -443,6 +465,14 @@ export class SmartExplorerView extends ItemView {
 		if (this.listContainer) {
 			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
 		}
+	}
+
+	private updateViewModeControl() {
+		if (!this.viewModeBtn) return;
+		const mode = this.resolvedViewMode();
+		this.viewModeBtn.setText(mode === "tree" ? "Tree" : "List");
+		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
+		this.viewModeBtn.disabled = this.query.sort === "manual";
 	}
 
 	private populateExtensions(select: HTMLSelectElement) {
@@ -513,6 +543,17 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
+		if (this.resolvedViewMode() === "tree") {
+			const tree = buildTree(records, this.query, this.manualOrderIndex);
+			for (const node of tree.children) {
+				this.listContainer.appendChild(this.createTreeNodeElement(node));
+			}
+			this.updateFileCount(displayed, records.length);
+			this.updateViewModeControl();
+			this.updateManualOrderControls();
+			return;
+		}
+
 		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
 		const isManualSort = this.query.sort === "manual";
 
@@ -559,7 +600,31 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		this.updateFileCount(displayed, records.length);
+		this.updateViewModeControl();
 		this.updateManualOrderControls();
+	}
+
+	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
+		if (node.type === "folder") {
+			const details = createEl("details", { cls: "smart-explorer-tree-folder" });
+			details.open = true;
+			const summary = details.createEl("summary", { cls: "smart-explorer-tree-folder-summary" });
+			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
+			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
+			summary.createSpan({ cls: "smart-explorer-tree-folder-icon", text: "▣" });
+			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: String(countTreeFiles(node)) });
+			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
+			for (const child of node.children) {
+				children.appendChild(this.createTreeNodeElement(child));
+			}
+			return details;
+		}
+
+		const row = this.createRowElement(node.record);
+		row.classList.add("smart-explorer-tree-file");
+		row.style.setProperty("--smart-explorer-depth", String(node.depth));
+		return row;
 	}
 
 	private createRowElement(record: FileRecord): HTMLElement {
@@ -766,4 +831,9 @@ export class SmartExplorerView extends ItemView {
 			await leaf.openFile(file);
 		}
 	}
+}
+
+function countTreeFiles(node: ExplorerTreeNode): number {
+	if (node.type === "file") return 1;
+	return node.children.reduce((count, child) => count + countTreeFiles(child), 0);
 }
