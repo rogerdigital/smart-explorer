@@ -4,8 +4,9 @@ import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
-import { getPreviewData, formatFileSize, formatDate, extractFirstParagraph } from "./preview";
-import type { PreviewData } from "./preview";
+import { reorderManualOrder } from "./manualOrder";
+import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
+import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -22,18 +23,22 @@ export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
+	private activeSavedViewId: string | null = null;
 	private listContainer: HTMLElement | null = null;
-	private previewPanel: HTMLElement | null = null;
 	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
+	private searchInput: HTMLInputElement | null = null;
+	private filterRow: HTMLElement | null = null;
+	private manualEditBtn: HTMLButtonElement | null = null;
+	private manualUndoBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
-	private previewEnabled = true;
-	private previewGeneration = 0;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
+	private manualOrderEditing = false;
+	private manualOrderUndoStack: string[][] = [];
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
 
@@ -42,7 +47,6 @@ export class SmartExplorerView extends ItemView {
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
 		const settings = this.plugin.settings;
-		this.previewEnabled = Platform.isMobile ? settings.mobilePreviewEnabled : settings.previewEnabled;
 		this.query = {
 			searchText: "",
 			sort: settings.defaultSort,
@@ -71,20 +75,22 @@ export class SmartExplorerView extends ItemView {
 		container.empty();
 		container.classList.add("smart-explorer");
 
-		this.renderToolbar(container);
-
-		const body = container.createDiv({ cls: "smart-explorer-body" });
-		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-		this.createResizeHandle(body);
-		this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
-
+		this.renderShell(container);
 		this.showIndexing();
 		await new Promise((r) => window.setTimeout(r, 0));
 		this.fileIndex.build();
 		this.renderList();
-		this.renderPreview();
 
 		this.registerVaultEvents();
+	}
+
+	private renderShell(container: HTMLElement) {
+		container.empty();
+		container.classList.add("smart-explorer");
+		this.renderToolbar(container);
+
+		const body = container.createDiv({ cls: "smart-explorer-body" });
+		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
 	}
 
 	private showIndexing() {
@@ -105,7 +111,10 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
-		this.previewPanel = null;
+		this.searchInput = null;
+		this.filterRow = null;
+		this.manualEditBtn = null;
+		this.manualUndoBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -166,7 +175,6 @@ export class SmartExplorerView extends ItemView {
 		this.rebuildTimeout = window.setTimeout(() => {
 			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
-			this.renderPreview();
 		}, 300);
 	}
 
@@ -178,40 +186,78 @@ export class SmartExplorerView extends ItemView {
 			placeholder: "Search files...",
 			cls: "smart-explorer-search",
 		});
+		this.searchInput = searchInput;
+		searchInput.value = this.query.searchText;
 		searchInput.addEventListener("input", () => {
 			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 			this.searchTimeout = window.setTimeout(() => {
 				this.query.searchText = searchInput.value;
+				this.activeSavedViewId = null;
 				this.renderList();
 			}, 200);
 		});
 
-		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
-		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => { this.query.sort = v as SortMode; this.renderList(); });
-		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => { this.query.group = v as GroupMode; this.renderList(); });
+		const presetRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-preset-row" });
+		this.renderSavedViewControls(presetRow);
 
-		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
-		this.extSelect = this.createSelect(row1, extOptions, "smart-explorer-ext", (v) => {
-			this.query.extension = v || null;
+		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => {
+			this.query.sort = v as SortMode;
+			this.activeSavedViewId = null;
+			if (this.query.sort !== "manual") {
+				this.manualOrderEditing = false;
+			}
+			this.updateManualOrderControls();
+			this.renderList();
+		}, this.query.sort);
+		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => {
+			this.query.group = v as GroupMode;
+			this.activeSavedViewId = null;
+			this.renderList();
+		}, this.query.group);
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
+		this.filterRow = row2;
+		row2.classList.add("is-collapsed");
+
+		const filterToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-filter-toggle",
+			text: "Filters",
+		});
+		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
+		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		filterToggleBtn.addEventListener("click", () => {
+			row2.classList.toggle("is-collapsed");
+			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
+		});
+
+		this.manualEditBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-edit",
+			text: "Edit order",
+		});
+		this.manualEditBtn.addEventListener("mouseenter", (e) => this.showTooltip("Enable manual drag sorting", e));
+		this.manualEditBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualEditBtn.addEventListener("click", () => {
+			if (this.query.sort !== "manual") return;
+			this.manualOrderEditing = !this.manualOrderEditing;
+			this.updateManualOrderControls();
 			this.renderList();
 		});
+
+		this.manualUndoBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-undo",
+			text: "Undo",
+		});
+		this.manualUndoBtn.addEventListener("mouseenter", (e) => this.showTooltip("Undo last manual reorder", e));
+		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
+
+		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
+		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
+			this.query.extension = v || null;
+			this.activeSavedViewId = null;
+			this.renderList();
+		}, this.query.extension ?? "");
 		this.populateExtensions(this.extSelect);
-
-		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
-
-		if (Platform.isMobile) {
-			row2.classList.add("is-collapsed");
-			const filterToggleBtn = row1.createEl("button", {
-				cls: "smart-explorer-filter-toggle",
-				text: "⚙",
-			});
-			filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
-			filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
-			filterToggleBtn.addEventListener("click", () => {
-				row2.classList.toggle("is-collapsed");
-				filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
-			});
-		}
 
 		this.createSelect(
 			row2,
@@ -220,12 +266,15 @@ export class SmartExplorerView extends ItemView {
 			(v) => {
 				const opt = MODIFIED_RANGE_OPTIONS.find((o) => o.value === v);
 				this.query.modifiedWithinDays = opt?.days ?? null;
+				this.activeSavedViewId = null;
 				this.renderList();
 			},
+			this.modifiedRangeValue(),
 		);
 
 		this.createToggle(row2, "MD", "smart-explorer-toggle-md", () => {
 			this.query.markdownOnly = !this.query.markdownOnly;
+			this.activeSavedViewId = null;
 			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
@@ -233,24 +282,17 @@ export class SmartExplorerView extends ItemView {
 
 		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
 			this.query.attachmentsOnly = !this.query.attachmentsOnly;
+			this.activeSavedViewId = null;
 			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
 			this.updateToggleStates(row2);
 			this.renderList();
 		}, "Attachment files only");
 
-		const previewBtn = this.createToggle(row2, "Preview", "smart-explorer-toggle-preview", () => {
-			this.previewEnabled = !this.previewEnabled;
-			previewBtn.classList.toggle("is-active", this.previewEnabled);
-			if (this.previewPanel) {
-				this.previewPanel.classList.toggle("is-hidden", !this.previewEnabled);
-			}
-			this.renderPreview();
-		}, "Toggle preview panel");
-		previewBtn.classList.toggle("is-active", this.previewEnabled);
-
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
 		this.updateToggleStates(row2);
+		this.updateManualOrderControls();
+		this.registerKeyboardShortcuts(container);
 	}
 
 	private createSelect(
@@ -258,13 +300,111 @@ export class SmartExplorerView extends ItemView {
 		options: { value: string; text: string }[],
 		cls: string,
 		onChange: (value: string) => void,
+		value?: string,
 	) {
 		const select = parent.createEl("select", { cls });
 		for (const opt of options) {
 			select.createEl("option", { value: opt.value, text: opt.text });
 		}
+		if (value !== undefined) select.value = value;
 		select.addEventListener("change", () => onChange(select.value));
 		return select;
+	}
+
+	private renderSavedViewControls(parent: HTMLElement) {
+		const options = getSavedViewOptions(this.plugin.settings.savedViews);
+		const select = parent.createEl("select", { cls: "smart-explorer-saved-view" });
+		select.createEl("option", { value: "", text: "Custom view" });
+		for (const view of options) {
+			select.createEl("option", { value: view.id, text: view.name });
+		}
+		select.value = this.activeSavedViewId ?? "";
+		select.addEventListener("change", () => {
+			const selected = options.find((view) => view.id === select.value);
+			if (!selected) {
+				this.activeSavedViewId = null;
+				return;
+			}
+			this.activeSavedViewId = selected.id;
+			this.query = cloneSavedViewQuery(selected.query);
+			this.manualOrderEditing = false;
+			this.rebuildView();
+		});
+
+		const saveBtn = parent.createEl("button", {
+			cls: "smart-explorer-save-view",
+			text: "Save",
+		});
+		saveBtn.addEventListener("mouseenter", (e) => this.showTooltip("Save current view", e));
+		saveBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		saveBtn.addEventListener("click", () => {
+			const name = activeWindow.prompt("Save view name", "");
+			if (!name || name.trim().length === 0) return;
+			const view = {
+				id: `custom-${Date.now()}`,
+				name: name.trim(),
+				query: cloneSavedViewQuery(this.query),
+			};
+			this.plugin.settings.savedViews.push(view);
+			this.activeSavedViewId = view.id;
+			void this.plugin.saveSettings();
+			this.rebuildView();
+		});
+
+		const deleteBtn = parent.createEl("button", {
+			cls: "smart-explorer-delete-view",
+			text: "Delete",
+		});
+		const isCustomView = this.activeSavedViewId?.startsWith("custom-") ?? false;
+		deleteBtn.disabled = !isCustomView;
+		deleteBtn.addEventListener("mouseenter", (e) => this.showTooltip("Delete saved view", e));
+		deleteBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		deleteBtn.addEventListener("click", () => {
+			if (!this.activeSavedViewId?.startsWith("custom-")) return;
+			this.plugin.settings.savedViews = this.plugin.settings.savedViews.filter(
+				(view) => view.id !== this.activeSavedViewId,
+			);
+			this.activeSavedViewId = null;
+			void this.plugin.saveSettings();
+			this.rebuildView();
+		});
+	}
+
+	private rebuildView() {
+		const container = this.containerEl.children[1] as HTMLElement;
+		this.renderShell(container);
+		this.renderList();
+	}
+
+	private modifiedRangeValue(): string {
+		const option = MODIFIED_RANGE_OPTIONS.find((o) => o.days === this.query.modifiedWithinDays);
+		return option?.value ?? "all";
+	}
+
+	private registerKeyboardShortcuts(container: HTMLElement) {
+		container.onkeydown = (e) => {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+				e.preventDefault();
+				this.searchInput?.focus();
+				this.searchInput?.select();
+				return;
+			}
+
+			if (e.key === "Escape") {
+				if (this.query.searchText) {
+					e.preventDefault();
+					this.query.searchText = "";
+					this.activeSavedViewId = null;
+					if (this.searchInput) this.searchInput.value = "";
+					this.renderList();
+					return;
+				}
+				if (this.filterRow && !this.filterRow.classList.contains("is-collapsed")) {
+					e.preventDefault();
+					this.filterRow.classList.add("is-collapsed");
+				}
+			}
+		};
 	}
 
 	private createToggle(
@@ -290,8 +430,23 @@ export class SmartExplorerView extends ItemView {
 		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
 	}
 
+	private updateManualOrderControls() {
+		const isManualSort = this.query.sort === "manual";
+		if (this.manualEditBtn) {
+			this.manualEditBtn.disabled = !isManualSort;
+			this.manualEditBtn.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
+			this.manualEditBtn.setText(this.manualOrderEditing ? "Done" : "Edit order");
+		}
+		if (this.manualUndoBtn) {
+			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
+		}
+		if (this.listContainer) {
+			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
+		}
+	}
+
 	private populateExtensions(select: HTMLSelectElement) {
-		const currentValue = select.value;
+		const currentValue = this.query.extension ?? select.value;
 		while (select.options.length > 1) select.remove(1);
 		const extensions = this.fileIndex.getExtensions();
 		for (const ext of extensions) {
@@ -348,15 +503,11 @@ export class SmartExplorerView extends ItemView {
 					attachmentsOnly: false,
 					modifiedWithinDays: null,
 				};
+				this.manualOrderEditing = false;
+				this.activeSavedViewId = null;
 				const container = this.containerEl.children[1] as HTMLElement;
-				container.empty();
-				container.classList.add("smart-explorer");
-				this.renderToolbar(container);
-				const body = container.createDiv({ cls: "smart-explorer-body" });
-				this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-				this.previewPanel = body.createDiv({ cls: "smart-explorer-preview" });
+				this.renderShell(container);
 				this.renderList();
-				this.renderPreview();
 			});
 			return;
 		}
@@ -382,7 +533,7 @@ export class SmartExplorerView extends ItemView {
 			}
 		}
 
-		if (isManualSort && this.listContainer) {
+		if (isManualSort && this.manualOrderEditing && this.listContainer) {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
@@ -408,6 +559,7 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		this.updateFileCount(displayed, records.length);
+		this.updateManualOrderControls();
 	}
 
 	private createRowElement(record: FileRecord): HTMLElement {
@@ -418,7 +570,13 @@ export class SmartExplorerView extends ItemView {
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
 		}
+		if (this.query.sort === "manual" && this.manualOrderEditing) {
+			row.classList.add("is-order-editable");
+		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
+		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
+		meta.createSpan({ cls: "smart-explorer-row-parent", text: formatFileParent(record.parentPath) });
+		meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(record.mtime) });
 		if (record.extension) {
 			row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		}
@@ -426,20 +584,9 @@ export class SmartExplorerView extends ItemView {
 		row.addEventListener("mouseenter", (e) => this.showTooltip(tooltipText, e));
 		row.addEventListener("mouseleave", () => this.hideTooltip());
 		const activate = () => {
-			if (Platform.isMobile && this.previewEnabled) {
-				if (this.selectedPath === record.path) {
-					void this.openFile(record.path);
-				} else {
-					this.selectedPath = record.path;
-					this.highlightSelected();
-					this.renderPreview();
-				}
-			} else {
-				this.selectedPath = record.path;
-				void this.openFile(record.path);
-				this.highlightSelected();
-				this.renderPreview();
-			}
+			this.selectedPath = record.path;
+			void this.openFile(record.path);
+			this.highlightSelected();
 		};
 		row.addEventListener("click", activate);
 		row.addEventListener("keydown", (e) => {
@@ -533,49 +680,41 @@ export class SmartExplorerView extends ItemView {
 		sections: { id: string; records: FileRecord[] }[],
 		sectionId?: string,
 	) {
+		if (!this.manualOrderEditing) return;
 		const order = this.plugin.settings.manualOrder;
-		const fromGlobal = order.indexOf(draggedPath);
-		if (fromGlobal >= 0) {
-			order.splice(fromGlobal, 1);
+		const nextOrder = reorderManualOrder(
+			order,
+			draggedPath,
+			toIndex,
+			sections,
+			this.query.group,
+			sectionId,
+		);
+		if (nextOrder.join("\n") === order.join("\n")) return;
+		this.manualOrderUndoStack.push([...order]);
+		if (this.manualOrderUndoStack.length > 20) {
+			this.manualOrderUndoStack.shift();
 		}
-
-		// Compute global insertion position
-		let targetGlobal: number;
-		if (sectionId && this.query.group !== "none") {
-			const section = sections.find((s) => s.id === sectionId);
-			if (section && section.records.length > 0) {
-				const clampedIdx = Math.min(toIndex, section.records.length);
-				if (clampedIdx >= section.records.length) {
-					const lastPath = section.records[section.records.length - 1]!.path;
-					const lastGlobal = order.indexOf(lastPath);
-					targetGlobal = lastGlobal >= 0 ? lastGlobal + 1 : order.length;
-				} else {
-					const targetPath = section.records[clampedIdx]!.path;
-					const targetPos = order.indexOf(targetPath);
-					targetGlobal = targetPos >= 0 ? targetPos : order.length;
-				}
-			} else {
-				targetGlobal = order.length;
-			}
-		} else {
-			// Flat mode: toIndex maps directly
-			const allRecords = sections.flatMap((s) => s.records);
-			const clampedIdx = Math.min(toIndex, allRecords.length);
-			if (clampedIdx >= allRecords.length) {
-				targetGlobal = order.length;
-			} else {
-				const targetPath = allRecords[clampedIdx]!.path;
-				const targetPos = order.indexOf(targetPath);
-				targetGlobal = targetPos >= 0 ? targetPos : order.length;
-			}
-		}
-
-		order.splice(targetGlobal, 0, draggedPath);
+		this.plugin.settings.manualOrder = nextOrder;
 		this.buildManualOrderIndex();
 		const scrollTop = this.listContainer?.scrollTop ?? 0;
 		this.renderList();
 		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
 		this.scheduleSaveOrder();
+		this.updateManualOrderControls();
+	}
+
+	private undoManualReorder() {
+		if (this.query.sort !== "manual") return;
+		const previousOrder = this.manualOrderUndoStack.pop();
+		if (!previousOrder) return;
+		this.plugin.settings.manualOrder = previousOrder;
+		this.buildManualOrderIndex();
+		const scrollTop = this.listContainer?.scrollTop ?? 0;
+		this.renderList();
+		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
+		this.scheduleSaveOrder();
+		this.updateManualOrderControls();
 	}
 
 	private scheduleSaveOrder() {
@@ -605,15 +744,6 @@ export class SmartExplorerView extends ItemView {
 				void navigator.clipboard.writeText(record.path);
 			}),
 		);
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item.setTitle("Delete").setIcon("trash").onClick(() => {
-				const file = this.app.vault.getAbstractFileByPath(record.path);
-				if (file instanceof TFile) {
-					void this.app.fileManager.trashFile(file);
-				}
-			}),
-		);
 		menu.showAtMouseEvent(e);
 	}
 
@@ -624,126 +754,6 @@ export class SmartExplorerView extends ItemView {
 			const row = el as HTMLElement;
 			row.classList.toggle("is-selected", row.dataset.path === this.selectedPath);
 		});
-	}
-
-	private renderPreview() {
-		if (!this.previewPanel) return;
-		this.previewPanel.empty();
-
-		if (!this.previewEnabled) {
-			this.previewPanel.classList.add("is-hidden");
-			return;
-		}
-		this.previewPanel.classList.remove("is-hidden");
-
-		if (!this.selectedPath) {
-			this.previewPanel.createDiv({
-				cls: "smart-explorer-preview-empty",
-				text: "Select a file to preview.",
-			});
-			return;
-		}
-
-		const record = this.fileIndex.get(this.selectedPath);
-		if (!record) {
-			this.previewPanel.createDiv({
-				cls: "smart-explorer-preview-empty",
-				text: "File not found.",
-			});
-			return;
-		}
-
-		const data = getPreviewData(record);
-		const gen = ++this.previewGeneration;
-		void this.renderPreviewContent(data, record, gen);
-	}
-
-	private async renderPreviewContent(data: PreviewData, record: FileRecord, gen: number) {
-		if (!this.previewPanel) return;
-
-		const header = this.previewPanel.createDiv({ cls: "smart-explorer-preview-header" });
-		header.createSpan({ cls: "smart-explorer-preview-title", text: record.basename });
-		header.createSpan({ cls: "smart-explorer-preview-path", text: record.path });
-
-		if (data.type === "markdown") {
-			if (data.heading) {
-				this.previewPanel.createDiv({
-					cls: "smart-explorer-preview-heading",
-					text: data.heading,
-				});
-			}
-
-			let paragraph: string | undefined;
-			const file = this.app.vault.getAbstractFileByPath(record.path);
-			if (file instanceof TFile) {
-				try {
-					const content = await this.app.vault.cachedRead(file);
-					if (gen !== this.previewGeneration) return;
-					paragraph = extractFirstParagraph(content);
-				} catch {
-					// file too large or unreadable, skip paragraph
-				}
-			}
-			if (paragraph) {
-				this.previewPanel.createDiv({
-					cls: "smart-explorer-preview-paragraph",
-					text: paragraph,
-				});
-			}
-
-			if (data.tags.length > 0) {
-				const tagsEl = this.previewPanel.createDiv({ cls: "smart-explorer-preview-tags" });
-				for (const tag of data.tags) {
-					tagsEl.createSpan({ cls: "smart-explorer-preview-tag", text: `#${tag}` });
-				}
-			}
-		} else if (data.type === "image") {
-			const imgContainer = this.previewPanel.createDiv({ cls: "smart-explorer-preview-image" });
-			const img = imgContainer.createEl("img");
-			const file = this.app.vault.getAbstractFileByPath(data.path);
-			if (file instanceof TFile) {
-				img.src = this.app.vault.getResourcePath(file);
-			}
-			img.alt = record.basename;
-		} else {
-			const meta = this.previewPanel.createDiv({ cls: "smart-explorer-preview-meta" });
-			meta.createDiv({ text: `Type: ${data.extension.toUpperCase()}` });
-			meta.createDiv({ text: `Size: ${formatFileSize(data.size)}` });
-			meta.createDiv({ text: `Modified: ${formatDate(data.mtime)}` });
-		}
-	}
-
-	private createResizeHandle(body: HTMLElement) {
-		const handle = body.createDiv({ cls: "smart-explorer-resize-handle" });
-		let startY = 0;
-		let startHeight = 0;
-
-		const onMove = (e: MouseEvent | TouchEvent) => {
-			const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
-			const delta = clientY - startY;
-			if (this.previewPanel) {
-				this.previewPanel.style.height = `${Math.max(60, startHeight - delta)}px`;
-			}
-		};
-
-		const onEnd = () => {
-			activeWindow.document.removeEventListener("mousemove", onMove);
-			activeWindow.document.removeEventListener("mouseup", onEnd);
-			activeWindow.document.removeEventListener("touchmove", onMove);
-			activeWindow.document.removeEventListener("touchend", onEnd);
-		};
-
-		const onStart = (e: MouseEvent | TouchEvent) => {
-			startY = e instanceof MouseEvent ? e.clientY : e.touches[0]!.clientY;
-			startHeight = this.previewPanel?.clientHeight ?? 200;
-			activeWindow.document.addEventListener("mousemove", onMove);
-			activeWindow.document.addEventListener("mouseup", onEnd);
-			activeWindow.document.addEventListener("touchmove", onMove);
-			activeWindow.document.addEventListener("touchend", onEnd);
-		};
-
-		handle.addEventListener("mousedown", onStart);
-		handle.addEventListener("touchstart", onStart);
 	}
 
 	private async openFile(path: string) {

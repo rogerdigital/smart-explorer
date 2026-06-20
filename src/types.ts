@@ -41,6 +41,12 @@ export type ExplorerQuery = {
 	modifiedWithinDays: number | null;
 };
 
+export type SavedExplorerView = {
+	id: string;
+	name: string;
+	query: ExplorerQuery;
+};
+
 export type ExplorerSection = {
 	id: string;
 	title: string;

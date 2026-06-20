@@ -44,30 +44,6 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("Preview enabled")
-			.setDesc("Show the file preview panel by default.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.previewEnabled)
-					.onChange(async (v) => {
-						this.plugin.settings.previewEnabled = v;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName("Preview enabled (mobile)")
-			.setDesc("Show the file preview panel by default on mobile devices.")
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.mobilePreviewEnabled)
-					.onChange(async (v) => {
-						this.plugin.settings.mobilePreviewEnabled = v;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
 			.setName("Hidden extensions")
 			.setDesc("Comma-separated list of file extensions to hide (e.g. JSON, CSS).")
 			.addText((text) => {
@@ -89,7 +65,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Reset manual order")
-			.setDesc("Clear the saved drag-and-drop file order. Files will be re-ordered based on the current sort when you next select Manual sort.")
+			.setDesc("Clear the saved drag-and-drop file order. Files will be re-ordered based on the current sort when you next select manual sort.")
 			.addButton((btn) => {
 				btn.setButtonText("Reset").onClick(() => {
 					this.plugin.settings.manualOrder = [];
