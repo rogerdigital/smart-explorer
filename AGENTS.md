@@ -1,9 +1,9 @@
 # Smart Explorer
 
-Obsidian plugin — alternative side-pane file explorer with sorting, grouping, filtering, and preview.
+Obsidian plugin — alternative side-pane file explorer with tree/list browsing, sorting, grouping, filtering, and manual order.
 
 - Plugin ID: `smart-explorer`
-- Current version: `0.3.2`
+- Current version: `0.3.3`
 - Min Obsidian version: `1.7.2`
 
 ## Commands
@@ -22,28 +22,28 @@ src/main.ts                  Plugin entry: registers view, commands, settings
 src/constants.ts             View type constant
 src/types.ts                 FileRecord, ExplorerQuery, ExplorerSection, SortMode, GroupMode
 
-src/explorer/SmartExplorerView.ts   ItemView: toolbar, list rendering, preview panel
+src/explorer/SmartExplorerView.ts   ItemView: toolbar, tree/list rendering, manual order UI
 src/explorer/FileIndex.ts           Builds FileRecord[] from vault + metadataCache
 src/explorer/FileTreeModel.ts       Orchestrates filter → sort → group pipeline
+src/explorer/TreeModel.ts           Builds folder-tree nodes for tree mode
 src/explorer/VirtualList.ts         Virtual scrolling list component
 src/explorer/DragSortManager.ts     Manual drag-and-drop sorting
 src/explorer/sorters.ts             Pure sorting functions (8 modes, path tie-breaker)
 src/explorer/groupers.ts            Pure grouping functions (5 modes: none, folder, extension, modified-month, top-folder)
-src/explorer/filters.ts             Pure filter functions (search, extension, type, date range)
-src/explorer/preview.ts             PreviewData extraction (markdown/image/binary)
+src/explorer/filters.ts             Pure filter functions (search, extension, file kind, date range)
 
 src/settings/settings.ts            Settings type + defaults
 src/settings/settings-tab.ts        PluginSettingTab UI
 src/settings/settings-helpers.ts    Sort/group option lists (shared by toolbar + settings)
 
-src/explorer/__tests__/*.test.ts    Unit tests for sorters, groupers, filters, preview, FileIndex, FileTreeModel
+src/explorer/__tests__/*.test.ts    Unit tests for sorters, groupers, filters, FileIndex, FileTreeModel, TreeModel
 ```
 
 **Data flow:** `FileIndex.build()` → `buildSections(records, query)` → filter → sort → group → VirtualList render
 
 ## Conventions
 
-- Sorters, groupers, filters, preview are pure functions — testable without Obsidian
+- Sorters, groupers, filters, and tree models are pure functions — testable without Obsidian
 - FileIndex is the single source of truth for vault file data
 - Vault events (create/delete/rename/modify) update FileIndex incrementally, debounced at 300ms
 - No network requests, no file writes (read-only plugin)
@@ -70,7 +70,6 @@ src/explorer/__tests__/*.test.ts    Unit tests for sorters, groupers, filters, p
 | Add sort mode | `sorters.ts` + `types.ts` (SortMode union) + `settings-helpers.ts` |
 | Add group mode | `groupers.ts` + `types.ts` (GroupMode union) + `settings-helpers.ts` |
 | Add filter | `filters.ts` + `types.ts` (ExplorerQuery) + `SmartExplorerView.ts` (toolbar) |
-| Change preview | `preview.ts` + `SmartExplorerView.ts` (renderPreviewContent) |
 | Change toolbar layout | `SmartExplorerView.ts` (renderToolbar) + `styles.css` |
 | Add settings | `settings.ts` + `settings-tab.ts` + `main.ts` (load/save) |
 | Fix rendering | `SmartExplorerView.ts` + `styles.css` |

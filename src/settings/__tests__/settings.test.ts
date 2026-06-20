@@ -7,9 +7,9 @@ describe("DEFAULT_SETTINGS", () => {
 			defaultGroup: "none",
 			hiddenExtensions: [],
 			manualOrder: [],
-			savedViews: [],
 		});
 		expect(DEFAULT_SETTINGS).not.toHaveProperty("previewEnabled");
 		expect(DEFAULT_SETTINGS).not.toHaveProperty("mobilePreviewEnabled");
+		expect(DEFAULT_SETTINGS).not.toHaveProperty("savedViews");
 	});
 });

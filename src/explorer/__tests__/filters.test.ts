@@ -21,14 +21,14 @@ const baseQuery: ExplorerQuery = {
 	sort: "name-asc",
 	group: "none",
 	extension: null,
-	markdownOnly: false,
-	attachmentsOnly: false,
+	fileKind: "all",
 	modifiedWithinDays: null,
 };
 
 const records: FileRecord[] = [
 	makeRecord({ path: "notes/project.md", mtime: Date.now() - 1000 }),
 	makeRecord({ path: "assets/photo.png", mtime: Date.now() - 100000, isAttachment: true, isMarkdown: false }),
+	makeRecord({ path: "assets/screenshot.jpeg", mtime: Date.now() - 120000, isAttachment: true, isMarkdown: false }),
 	makeRecord({ path: "readme.md", mtime: Date.now() - 200000 }),
 	makeRecord({ path: "data.json", mtime: Date.now() - 999999999, isMarkdown: false }),
 ];
@@ -36,7 +36,7 @@ const records: FileRecord[] = [
 describe("applyFilters", () => {
 	it("returns all records with empty query", () => {
 		const result = applyFilters(records, baseQuery);
-		expect(result).toHaveLength(4);
+		expect(result).toHaveLength(5);
 	});
 
 	it("filters by search text matching basename", () => {
@@ -47,7 +47,7 @@ describe("applyFilters", () => {
 
 	it("filters by search text matching path", () => {
 		const result = applyFilters(records, { ...baseQuery, searchText: "assets/" });
-		expect(result).toHaveLength(1);
+		expect(result).toHaveLength(2);
 	});
 
 	it("is case-insensitive", () => {
@@ -61,21 +61,25 @@ describe("applyFilters", () => {
 		expect(result.every((r) => r.extension === "md")).toBe(true);
 	});
 
-	it("filters markdown only", () => {
-		const result = applyFilters(records, { ...baseQuery, markdownOnly: true });
+	it("filters markdown files by file kind", () => {
+		const result = applyFilters(records, { ...baseQuery, fileKind: "markdown" });
 		expect(result).toHaveLength(2);
 		expect(result.every((r) => r.isMarkdown)).toBe(true);
 	});
 
-	it("filters attachments only", () => {
-		const result = applyFilters(records, { ...baseQuery, attachmentsOnly: true });
-		expect(result).toHaveLength(1);
-		expect(result[0]!.path).toBe("assets/photo.png");
+	it("filters attachments by file kind", () => {
+		const result = applyFilters(records, { ...baseQuery, fileKind: "attachments" });
+		expect(result.map((r) => r.path)).toEqual(["assets/photo.png", "assets/screenshot.jpeg"]);
+	});
+
+	it("filters images by file kind", () => {
+		const result = applyFilters(records, { ...baseQuery, fileKind: "images" });
+		expect(result.map((r) => r.path)).toEqual(["assets/photo.png", "assets/screenshot.jpeg"]);
 	});
 
 	it("filters by modified within days", () => {
 		const result = applyFilters(records, { ...baseQuery, modifiedWithinDays: 1 });
-		expect(result.length).toBeLessThan(4);
+		expect(result.length).toBeLessThan(5);
 		expect(result.every((r) => r.mtime >= Date.now() - 1 * 24 * 60 * 60 * 1000)).toBe(true);
 	});
 
@@ -83,7 +87,7 @@ describe("applyFilters", () => {
 		const result = applyFilters(records, {
 			...baseQuery,
 			searchText: "project",
-			markdownOnly: true,
+			fileKind: "markdown",
 		});
 		expect(result).toHaveLength(1);
 		expect(result[0]!.path).toBe("notes/project.md");

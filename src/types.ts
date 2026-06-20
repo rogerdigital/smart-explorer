@@ -18,6 +18,8 @@ export type GroupMode =
 
 export type ViewMode = "tree" | "list";
 
+export type FileKind = "all" | "markdown" | "attachments" | "images";
+
 export type FileRecord = {
 	path: string;
 	basename: string;
@@ -38,15 +40,8 @@ export type ExplorerQuery = {
 	sort: SortMode;
 	group: GroupMode;
 	extension: string | null;
-	markdownOnly: boolean;
-	attachmentsOnly: boolean;
+	fileKind: FileKind;
 	modifiedWithinDays: number | null;
-};
-
-export type SavedExplorerView = {
-	id: string;
-	name: string;
-	query: ExplorerQuery;
 };
 
 export type ExplorerSection = {

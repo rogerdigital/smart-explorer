@@ -13,7 +13,8 @@
   - [ ] Loads without console errors
   - [ ] File list displays correctly
   - [ ] Sort, group, filter controls work
-  - [ ] Preview panel updates on selection
+  - [ ] Tree/list toggle works
+  - [ ] Manual order edit and undo work in Manual sort mode
   - [ ] Settings persist after reload
   - [ ] Vault events (create/delete/rename/modify) trigger reindex
 

@@ -1,5 +1,7 @@
 import type { ExplorerQuery, FileRecord } from "../types";
 
+const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
+
 export function applyFilters(records: FileRecord[], query: ExplorerQuery): FileRecord[] {
 	let result = records;
 
@@ -14,12 +16,16 @@ export function applyFilters(records: FileRecord[], query: ExplorerQuery): FileR
 		result = result.filter((r) => r.extension === query.extension);
 	}
 
-	if (query.markdownOnly) {
+	if (query.fileKind === "markdown") {
 		result = result.filter((r) => r.isMarkdown);
 	}
 
-	if (query.attachmentsOnly) {
+	if (query.fileKind === "attachments") {
 		result = result.filter((r) => r.isAttachment);
+	}
+
+	if (query.fileKind === "images") {
+		result = result.filter((r) => IMAGE_EXTENSIONS.has(r.extension.toLowerCase()));
 	}
 
 	if (query.modifiedWithinDays !== null) {

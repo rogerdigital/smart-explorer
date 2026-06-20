@@ -1,4 +1,4 @@
-import { ItemView, Menu, Platform, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
@@ -7,11 +7,10 @@ import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
-import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { resolveExplorerViewMode } from "./viewMode";
 import { getToolbarMoreState } from "./toolbarState";
-import type { ExplorerQuery, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
+import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
 import { GROUP_OPTIONS } from "../settings/settings-helpers";
@@ -21,6 +20,13 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 	{ value: "1d", text: "Last day", days: 1 },
 	{ value: "7d", text: "Last 7 days", days: 7 },
 	{ value: "30d", text: "Last 30 days", days: 30 },
+];
+
+const FILE_KIND_OPTIONS: { value: FileKind; text: string }[] = [
+	{ value: "all", text: "All files" },
+	{ value: "markdown", text: "Markdown" },
+	{ value: "attachments", text: "Attachments" },
+	{ value: "images", text: "Images" },
 ];
 
 const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
@@ -40,10 +46,8 @@ export class SmartExplorerView extends ItemView {
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
 	private viewMode: ViewMode = "tree";
-	private activeSavedViewId: string | null = null;
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
-	private extSelect: HTMLSelectElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
@@ -69,8 +73,7 @@ export class SmartExplorerView extends ItemView {
 			sort: settings.defaultSort,
 			group: settings.defaultGroup,
 			extension: null,
-			markdownOnly: false,
-			attachmentsOnly: false,
+			fileKind: "all",
 			modifiedWithinDays: null,
 		};
 	}
@@ -190,7 +193,6 @@ export class SmartExplorerView extends ItemView {
 	private scheduleRebuild() {
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		this.rebuildTimeout = window.setTimeout(() => {
-			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
 		}, 300);
 	}
@@ -209,13 +211,9 @@ export class SmartExplorerView extends ItemView {
 			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 			this.searchTimeout = window.setTimeout(() => {
 				this.query.searchText = searchInput.value;
-				this.activeSavedViewId = null;
 				this.renderList();
 			}, 200);
 		});
-
-		const presetRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-preset-row" });
-		this.renderSavedViewControls(presetRow);
 
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
 		this.viewModeBtn = row1.createEl("button", {
@@ -231,7 +229,6 @@ export class SmartExplorerView extends ItemView {
 		});
 		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
 			this.query.sort = v as SortMode;
-			this.activeSavedViewId = null;
 			if (this.query.sort !== "manual") {
 				this.manualOrderEditing = false;
 			}
@@ -245,8 +242,8 @@ export class SmartExplorerView extends ItemView {
 
 		const filterToggleBtn = row1.createEl("button", {
 			cls: "smart-explorer-filter-toggle",
-			text: "⌕",
 		});
+		setIcon(filterToggleBtn, "sliders-horizontal");
 		filterToggleBtn.setAttribute("aria-label", "Show filters");
 		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
 		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
@@ -264,17 +261,14 @@ export class SmartExplorerView extends ItemView {
 
 		this.createSelect(row2, GROUP_OPTIONS, "smart-explorer-group", (v) => {
 			this.query.group = v as GroupMode;
-			this.activeSavedViewId = null;
 			this.renderList();
 		}, this.query.group);
 
-		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
-		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
-			this.query.extension = v || null;
-			this.activeSavedViewId = null;
+		this.createSelect(row2, FILE_KIND_OPTIONS, "smart-explorer-kind", (v) => {
+			this.query.fileKind = v as FileKind;
+			this.query.extension = null;
 			this.renderList();
-		}, this.query.extension ?? "");
-		this.populateExtensions(this.extSelect);
+		}, this.query.fileKind);
 
 		this.createSelect(
 			row2,
@@ -283,31 +277,13 @@ export class SmartExplorerView extends ItemView {
 			(v) => {
 				const opt = MODIFIED_RANGE_OPTIONS.find((o) => o.value === v);
 				this.query.modifiedWithinDays = opt?.days ?? null;
-				this.activeSavedViewId = null;
 				this.renderList();
 			},
 			this.modifiedRangeValue(),
 		);
 
-		this.createToggle(row2, "MD", "smart-explorer-toggle-md", () => {
-			this.query.markdownOnly = !this.query.markdownOnly;
-			this.activeSavedViewId = null;
-			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
-			this.updateToggleStates(row2);
-			this.renderList();
-		}, "Markdown files only");
-
-		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
-			this.query.attachmentsOnly = !this.query.attachmentsOnly;
-			this.activeSavedViewId = null;
-			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
-			this.updateToggleStates(row2);
-			this.renderList();
-		}, "Attachment files only");
-
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
-		this.updateToggleStates(row2);
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
 		this.registerKeyboardShortcuts(container);
@@ -329,42 +305,9 @@ export class SmartExplorerView extends ItemView {
 		return select;
 	}
 
-	private renderSavedViewControls(parent: HTMLElement) {
-		const options = getSavedViewOptions(this.plugin.settings.savedViews);
-		const select = parent.createEl("select", { cls: "smart-explorer-saved-view" });
-		select.createEl("option", { value: "", text: "Custom view" });
-		for (const view of options) {
-			select.createEl("option", { value: view.id, text: view.name });
-		}
-		select.value = this.activeSavedViewId ?? "";
-		select.addEventListener("change", () => {
-			const selected = options.find((view) => view.id === select.value);
-			if (!selected) {
-				this.activeSavedViewId = null;
-				return;
-			}
-			this.activeSavedViewId = selected.id;
-			this.query = cloneSavedViewQuery(selected.query);
-			this.manualOrderEditing = false;
-			this.rebuildView();
-		});
-
-	}
-
 	private showToolbarMenu(e: MouseEvent) {
-		const state = getToolbarMoreState(
-			this.activeSavedViewId,
-			this.query.sort,
-			this.manualOrderUndoStack.length > 0,
-		);
+		const state = getToolbarMoreState(this.query.sort, this.manualOrderUndoStack.length > 0);
 		const menu = new Menu();
-		menu.addItem((item) =>
-			item.setTitle("Save current view").setIcon("bookmark-plus").onClick(() => this.saveCurrentView()),
-		);
-		menu.addItem((item) =>
-			item.setTitle("Delete saved view").setIcon("trash").setDisabled(!state.canDeleteSavedView).onClick(() => this.deleteCurrentSavedView()),
-		);
-		menu.addSeparator();
 		menu.addItem((item) =>
 			item
 				.setTitle(this.manualOrderEditing ? "Finish editing order" : "Edit manual order")
@@ -379,37 +322,25 @@ export class SmartExplorerView extends ItemView {
 		menu.addItem((item) =>
 			item.setTitle("Undo manual reorder").setIcon("undo").setDisabled(!state.canUndoManualOrder).onClick(() => this.undoManualReorder()),
 		);
-		menu.showAtMouseEvent(e);
-	}
-
-	private saveCurrentView() {
-		const name = activeWindow.prompt("Save view name", "");
-		if (!name || name.trim().length === 0) return;
-		const view = {
-			id: `custom-${Date.now()}`,
-			name: name.trim(),
-			query: cloneSavedViewQuery(this.query),
-		};
-		this.plugin.settings.savedViews.push(view);
-		this.activeSavedViewId = view.id;
-		void this.plugin.saveSettings();
-		this.rebuildView();
-	}
-
-	private deleteCurrentSavedView() {
-		if (!this.activeSavedViewId?.startsWith("custom-")) return;
-		this.plugin.settings.savedViews = this.plugin.settings.savedViews.filter(
-			(view) => view.id !== this.activeSavedViewId,
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Reset filters").setIcon("filter-x").onClick(() => this.resetFilters()),
 		);
-		this.activeSavedViewId = null;
-		void this.plugin.saveSettings();
-		this.rebuildView();
+		menu.showAtMouseEvent(e);
 	}
 
 	private rebuildView() {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.renderShell(container);
 		this.renderList();
+	}
+
+	private resetFilters() {
+		this.query.searchText = "";
+		this.query.extension = null;
+		this.query.fileKind = "all";
+		this.query.modifiedWithinDays = null;
+		this.rebuildView();
 	}
 
 	private modifiedRangeValue(): string {
@@ -434,7 +365,6 @@ export class SmartExplorerView extends ItemView {
 				if (this.query.searchText) {
 					e.preventDefault();
 					this.query.searchText = "";
-					this.activeSavedViewId = null;
 					if (this.searchInput) this.searchInput.value = "";
 					this.renderList();
 					return;
@@ -445,29 +375,6 @@ export class SmartExplorerView extends ItemView {
 				}
 			}
 		};
-	}
-
-	private createToggle(
-		parent: HTMLElement,
-		label: string,
-		cls: string,
-		onClick: () => void,
-		tooltip?: string,
-	) {
-		const btn = parent.createEl("button", { cls, text: label });
-		if (tooltip) {
-			btn.addEventListener("mouseenter", (e) => this.showTooltip(tooltip, e));
-			btn.addEventListener("mouseleave", () => this.hideTooltip());
-		}
-		btn.addEventListener("click", onClick);
-		return btn;
-	}
-
-	private updateToggleStates(row: HTMLElement) {
-		const mdBtn = row.querySelector(".smart-explorer-toggle-md");
-		const attachBtn = row.querySelector(".smart-explorer-toggle-attach");
-		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
-		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
 	}
 
 	private updateManualOrderControls() {
@@ -484,16 +391,6 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.setText(mode === "tree" ? "▸" : "☰");
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
-	}
-
-	private populateExtensions(select: HTMLSelectElement) {
-		const currentValue = this.query.extension ?? select.value;
-		while (select.options.length > 1) select.remove(1);
-		const extensions = this.fileIndex.getExtensions();
-		for (const ext of extensions) {
-			select.createEl("option", { value: ext, text: `.${ext}` });
-		}
-		select.value = currentValue || "";
 	}
 
 	private renderList() {
@@ -537,15 +434,13 @@ export class SmartExplorerView extends ItemView {
 			clearBtn.addEventListener("click", () => {
 				this.query = {
 					searchText: "",
-					sort: this.plugin.settings.defaultSort,
-					group: this.plugin.settings.defaultGroup,
+					sort: this.query.sort,
+					group: this.query.group,
 					extension: null,
-					markdownOnly: false,
-					attachmentsOnly: false,
+					fileKind: "all",
 					modifiedWithinDays: null,
 				};
 				this.manualOrderEditing = false;
-				this.activeSavedViewId = null;
 				const container = this.containerEl.children[1] as HTMLElement;
 				this.renderShell(container);
 				this.renderList();

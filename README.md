@@ -12,9 +12,8 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 |----------|---------|
 | **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual (drag-and-drop) |
 | **Group** | Folder, extension, modified month, top-level folder |
-| **Filter** | Search by name/path, markdown-only, attachments-only, date range (1d / 7d / 30d) |
+| **Filter** | Search by name/path, file kind (all / markdown / attachments / images), date range (1d / 7d / 30d) |
 | **View** | Folder tree by default, with a flat list mode for global sorting and manual order |
-| **Saved views** | Built-in views plus custom saved combinations of search, filters, sort, and group |
 | **Keyboard** | Focus search, clear search, move through rows, and open selected files from the keyboard |
 | **Settings** | Default sort/group mode, hidden extensions, reset manual order |
 
@@ -40,8 +39,8 @@ Switch to **Manual** sort mode, click **Edit order**, then drag files to reorder
 ## Usage
 
 1. Open via ribbon icon or Command Palette → **Smart Explorer: Open**
-2. Toolbar controls tree/list mode, sorting, grouping, and filtering
-3. Save frequent toolbar combinations as custom views
+2. Toolbar controls tree/list mode and sorting
+3. Use the filter button for grouping, file kind, and modified-date filters
 4. Click a file to open it in Obsidian
 5. Defaults persist in **Settings → Community Plugins → Smart Explorer**
 

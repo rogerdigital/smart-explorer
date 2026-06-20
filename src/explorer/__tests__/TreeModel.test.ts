@@ -23,8 +23,7 @@ const baseQuery: ExplorerQuery = {
 	sort: "name-asc",
 	group: "none",
 	extension: null,
-	markdownOnly: false,
-	attachmentsOnly: false,
+	fileKind: "all",
 	modifiedWithinDays: null,
 };
 

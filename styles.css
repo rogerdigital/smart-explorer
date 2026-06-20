@@ -24,11 +24,6 @@
 	flex-wrap: wrap;
 }
 
-.smart-explorer-preset-row {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-}
-
 .smart-explorer-search {
 	width: 100%;
 	padding: 4px 8px;
@@ -56,10 +51,6 @@
 
 .smart-explorer-toolbar-filters select {
 	flex-basis: 100%;
-}
-
-.smart-explorer-saved-view {
-	min-width: 0;
 }
 
 .smart-explorer-toolbar button {

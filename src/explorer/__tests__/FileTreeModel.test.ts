@@ -21,8 +21,7 @@ const baseQuery: ExplorerQuery = {
 	sort: "name-asc",
 	group: "none",
 	extension: null,
-	markdownOnly: false,
-	attachmentsOnly: false,
+	fileKind: "all",
 	modifiedWithinDays: null,
 };
 
@@ -67,8 +66,8 @@ describe("buildSections", () => {
 		expect(sections[0]!.records).toHaveLength(0);
 	});
 
-	it("combines markdownOnly filter with extension group", () => {
-		const sections = buildSections(records, { ...baseQuery, markdownOnly: true, group: "extension" });
+	it("combines markdown file kind filter with extension group", () => {
+		const sections = buildSections(records, { ...baseQuery, fileKind: "markdown", group: "extension" });
 		expect(sections).toHaveLength(1);
 		expect(sections[0]!.id).toBe(".md");
 		expect(sections[0]!.records).toHaveLength(3);
