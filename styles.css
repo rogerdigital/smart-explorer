@@ -26,7 +26,7 @@
 
 .smart-explorer-preset-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-template-columns: minmax(0, 1fr);
 }
 
 .smart-explorer-search {
@@ -71,6 +71,25 @@
 	color: var(--text-muted);
 	cursor: pointer;
 	white-space: nowrap;
+}
+
+.smart-explorer-view-mode,
+.smart-explorer-filter-toggle,
+.smart-explorer-more {
+	width: 30px;
+	min-width: 30px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--font-ui-small);
+}
+
+.smart-explorer-sort {
+	flex: 1 1 72px;
+}
+
+.smart-explorer-group {
+	display: none;
 }
 
 .smart-explorer-filter-toggle {
