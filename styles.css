@@ -65,6 +65,7 @@
 }
 
 .smart-explorer-view-mode,
+.smart-explorer-manual-order,
 .smart-explorer-filter-toggle,
 .smart-explorer-more {
 	width: 30px;
@@ -85,6 +86,10 @@
 
 .smart-explorer-filter-toggle {
 	flex-shrink: 0;
+}
+
+.smart-explorer-manual-order.is-hidden {
+	display: none;
 }
 
 .smart-explorer-toolbar button:hover {

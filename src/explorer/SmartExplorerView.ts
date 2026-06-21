@@ -48,6 +48,7 @@ export class SmartExplorerView extends ItemView {
 	private viewMode: ViewMode = "tree";
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
+	private manualOrderBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
@@ -132,6 +133,7 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.listContainer = null;
 		this.viewModeBtn = null;
+		this.manualOrderBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
 		this.moreBtn = null;
@@ -236,6 +238,21 @@ export class SmartExplorerView extends ItemView {
 			this.updateViewModeControl();
 			this.renderList();
 		}, this.query.sort);
+
+		this.manualOrderBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-order",
+		});
+		this.manualOrderBtn.addEventListener("mouseenter", (e) => {
+			this.showTooltip(this.manualOrderEditing ? "Finish editing order" : "Edit manual order", e);
+		});
+		this.manualOrderBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualOrderBtn.addEventListener("click", () => {
+			if (this.query.sort !== "manual") return;
+			this.manualOrderEditing = !this.manualOrderEditing;
+			this.updateManualOrderControls();
+			this.renderList();
+		});
+
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		this.filterRow = row2;
 		row2.classList.add("is-collapsed");
@@ -309,17 +326,6 @@ export class SmartExplorerView extends ItemView {
 		const state = getToolbarMoreState(this.query.sort, this.manualOrderUndoStack.length > 0);
 		const menu = new Menu();
 		menu.addItem((item) =>
-			item
-				.setTitle(this.manualOrderEditing ? "Finish editing order" : "Edit manual order")
-				.setIcon("list-ordered")
-				.setDisabled(!state.canEditManualOrder)
-				.onClick(() => {
-					this.manualOrderEditing = !this.manualOrderEditing;
-					this.updateManualOrderControls();
-					this.renderList();
-				}),
-		);
-		menu.addItem((item) =>
 			item.setTitle("Undo manual reorder").setIcon("undo").setDisabled(!state.canUndoManualOrder).onClick(() => this.undoManualReorder()),
 		);
 		menu.addSeparator();
@@ -379,7 +385,16 @@ export class SmartExplorerView extends ItemView {
 
 	private updateManualOrderControls() {
 		const isManualSort = this.query.sort === "manual";
-		this.moreBtn?.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
+		if (this.manualOrderBtn) {
+			this.manualOrderBtn.classList.toggle("is-hidden", !isManualSort);
+			this.manualOrderBtn.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
+			this.manualOrderBtn.setAttribute(
+				"aria-label",
+				this.manualOrderEditing ? "Finish editing order" : "Edit manual order",
+			);
+			this.manualOrderBtn.empty();
+			setIcon(this.manualOrderBtn, this.manualOrderEditing ? "check" : "list-ordered");
+		}
 		if (this.listContainer) {
 			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
 		}
