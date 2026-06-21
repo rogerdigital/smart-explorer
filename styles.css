@@ -24,11 +24,6 @@
 	flex-wrap: wrap;
 }
 
-.smart-explorer-preset-row {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
-}
-
 .smart-explorer-search {
 	width: 100%;
 	padding: 4px 8px;
@@ -58,10 +53,6 @@
 	flex-basis: 100%;
 }
 
-.smart-explorer-saved-view {
-	min-width: 0;
-}
-
 .smart-explorer-toolbar button {
 	padding: 3px 6px;
 	font-size: var(--font-ui-smallest);
@@ -71,6 +62,25 @@
 	color: var(--text-muted);
 	cursor: pointer;
 	white-space: nowrap;
+}
+
+.smart-explorer-view-mode,
+.smart-explorer-filter-toggle,
+.smart-explorer-more {
+	width: 30px;
+	min-width: 30px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--font-ui-small);
+}
+
+.smart-explorer-sort {
+	flex: 1 1 72px;
+}
+
+.smart-explorer-group {
+	display: none;
 }
 
 .smart-explorer-filter-toggle {
@@ -116,6 +126,68 @@
 	font-size: var(--font-ui-small);
 	line-height: 1.4;
 	contain: content;
+}
+
+.smart-explorer-tree-file {
+	padding-left: calc(6px + var(--smart-explorer-depth, 0) * 14px);
+}
+
+.smart-explorer-tree-folder {
+	margin: 0;
+}
+
+.smart-explorer-tree-folder-summary {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 6px 4px calc(6px + var(--smart-explorer-depth, 0) * 14px);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	list-style: none;
+	min-width: 0;
+}
+
+.smart-explorer-tree-folder-summary::-webkit-details-marker {
+	display: none;
+}
+
+.smart-explorer-tree-folder-summary:hover {
+	background: var(--background-modifier-hover);
+}
+
+.smart-explorer-tree-disclosure {
+	color: var(--text-faint);
+	flex: 0 0 10px;
+	font-size: var(--font-ui-smallest);
+	line-height: 1;
+	transform: rotate(0deg);
+	transition: transform 0.12s ease;
+}
+
+.smart-explorer-tree-folder[open] > .smart-explorer-tree-folder-summary .smart-explorer-tree-disclosure {
+	transform: rotate(90deg);
+}
+
+.smart-explorer-tree-folder-icon {
+	color: var(--text-faint);
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smallest);
+}
+
+.smart-explorer-tree-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.smart-explorer-tree-count {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smallest);
+	flex-shrink: 0;
 }
 
 .smart-explorer-row:hover {

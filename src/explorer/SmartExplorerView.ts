@@ -1,16 +1,19 @@
-import { ItemView, Menu, Platform, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
+import { buildTree } from "./TreeModel";
+import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
-import { cloneSavedViewQuery, getSavedViewOptions } from "./savedViews";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
-import type { ExplorerQuery, FileRecord, SortMode, GroupMode } from "../types";
+import { resolveExplorerViewMode } from "./viewMode";
+import { getToolbarMoreState } from "./toolbarState";
+import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
-import { SORT_OPTIONS, GROUP_OPTIONS } from "../settings/settings-helpers";
+import { GROUP_OPTIONS } from "../settings/settings-helpers";
 
 const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null }[] = [
 	{ value: "all", text: "Any time", days: null },
@@ -19,18 +22,36 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 	{ value: "30d", text: "Last 30 days", days: 30 },
 ];
 
+const FILE_KIND_OPTIONS: { value: FileKind; text: string }[] = [
+	{ value: "all", text: "All files" },
+	{ value: "markdown", text: "Markdown" },
+	{ value: "attachments", text: "Attachments" },
+	{ value: "images", text: "Images" },
+];
+
+const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
+	{ value: "name-asc", text: "A-Z" },
+	{ value: "name-desc", text: "Z-A" },
+	{ value: "modified-new", text: "Mod new" },
+	{ value: "modified-old", text: "Mod old" },
+	{ value: "created-new", text: "New" },
+	{ value: "created-old", text: "Old" },
+	{ value: "extension", text: "Ext" },
+	{ value: "size", text: "Size" },
+	{ value: "manual", text: "Manual" },
+];
+
 export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
-	private activeSavedViewId: string | null = null;
+	private viewMode: ViewMode = "tree";
 	private listContainer: HTMLElement | null = null;
-	private extSelect: HTMLSelectElement | null = null;
+	private viewModeBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
-	private manualEditBtn: HTMLButtonElement | null = null;
-	private manualUndoBtn: HTMLButtonElement | null = null;
+	private moreBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
@@ -52,8 +73,7 @@ export class SmartExplorerView extends ItemView {
 			sort: settings.defaultSort,
 			group: settings.defaultGroup,
 			extension: null,
-			markdownOnly: false,
-			attachmentsOnly: false,
+			fileKind: "all",
 			modifiedWithinDays: null,
 		};
 	}
@@ -111,10 +131,10 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager = null;
 		}
 		this.listContainer = null;
+		this.viewModeBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
-		this.manualEditBtn = null;
-		this.manualUndoBtn = null;
+		this.moreBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -173,7 +193,6 @@ export class SmartExplorerView extends ItemView {
 	private scheduleRebuild() {
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		this.rebuildTimeout = window.setTimeout(() => {
-			if (this.extSelect) this.populateExtensions(this.extSelect);
 			this.renderList();
 		}, 300);
 	}
@@ -192,37 +211,40 @@ export class SmartExplorerView extends ItemView {
 			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 			this.searchTimeout = window.setTimeout(() => {
 				this.query.searchText = searchInput.value;
-				this.activeSavedViewId = null;
 				this.renderList();
 			}, 200);
 		});
 
-		const presetRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-preset-row" });
-		this.renderSavedViewControls(presetRow);
-
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
-		this.createSelect(row1, SORT_OPTIONS, "smart-explorer-sort", (v) => {
+		this.viewModeBtn = row1.createEl("button", {
+			cls: "smart-explorer-view-mode",
+			text: this.resolvedViewMode() === "tree" ? "▸" : "☰",
+		});
+		this.viewModeBtn.setAttribute("aria-label", "Toggle tree/list view");
+		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip("Toggle tree/list view", e));
+		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.viewModeBtn.addEventListener("click", () => {
+			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
+			this.renderList();
+		});
+		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
 			this.query.sort = v as SortMode;
-			this.activeSavedViewId = null;
 			if (this.query.sort !== "manual") {
 				this.manualOrderEditing = false;
 			}
 			this.updateManualOrderControls();
+			this.updateViewModeControl();
 			this.renderList();
 		}, this.query.sort);
-		this.createSelect(row1, GROUP_OPTIONS, "smart-explorer-group", (v) => {
-			this.query.group = v as GroupMode;
-			this.activeSavedViewId = null;
-			this.renderList();
-		}, this.query.group);
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		this.filterRow = row2;
 		row2.classList.add("is-collapsed");
 
 		const filterToggleBtn = row1.createEl("button", {
 			cls: "smart-explorer-filter-toggle",
-			text: "Filters",
 		});
+		setIcon(filterToggleBtn, "sliders-horizontal");
+		filterToggleBtn.setAttribute("aria-label", "Show filters");
 		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
 		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		filterToggleBtn.addEventListener("click", () => {
@@ -230,34 +252,23 @@ export class SmartExplorerView extends ItemView {
 			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
 		});
 
-		this.manualEditBtn = row1.createEl("button", {
-			cls: "smart-explorer-manual-edit",
-			text: "Edit order",
+		this.moreBtn = row1.createEl("button", {
+			cls: "smart-explorer-more",
+			text: "⋯",
 		});
-		this.manualEditBtn.addEventListener("mouseenter", (e) => this.showTooltip("Enable manual drag sorting", e));
-		this.manualEditBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		this.manualEditBtn.addEventListener("click", () => {
-			if (this.query.sort !== "manual") return;
-			this.manualOrderEditing = !this.manualOrderEditing;
-			this.updateManualOrderControls();
-			this.renderList();
-		});
+		this.moreBtn.setAttribute("aria-label", "More actions");
+		this.moreBtn.addEventListener("click", (e) => this.showToolbarMenu(e));
 
-		this.manualUndoBtn = row1.createEl("button", {
-			cls: "smart-explorer-manual-undo",
-			text: "Undo",
-		});
-		this.manualUndoBtn.addEventListener("mouseenter", (e) => this.showTooltip("Undo last manual reorder", e));
-		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
-
-		const extOptions: { value: string; text: string }[] = [{ value: "", text: "All types" }];
-		this.extSelect = this.createSelect(row2, extOptions, "smart-explorer-ext", (v) => {
-			this.query.extension = v || null;
-			this.activeSavedViewId = null;
+		this.createSelect(row2, GROUP_OPTIONS, "smart-explorer-group", (v) => {
+			this.query.group = v as GroupMode;
 			this.renderList();
-		}, this.query.extension ?? "");
-		this.populateExtensions(this.extSelect);
+		}, this.query.group);
+
+		this.createSelect(row2, FILE_KIND_OPTIONS, "smart-explorer-kind", (v) => {
+			this.query.fileKind = v as FileKind;
+			this.query.extension = null;
+			this.renderList();
+		}, this.query.fileKind);
 
 		this.createSelect(
 			row2,
@@ -266,31 +277,14 @@ export class SmartExplorerView extends ItemView {
 			(v) => {
 				const opt = MODIFIED_RANGE_OPTIONS.find((o) => o.value === v);
 				this.query.modifiedWithinDays = opt?.days ?? null;
-				this.activeSavedViewId = null;
 				this.renderList();
 			},
 			this.modifiedRangeValue(),
 		);
 
-		this.createToggle(row2, "MD", "smart-explorer-toggle-md", () => {
-			this.query.markdownOnly = !this.query.markdownOnly;
-			this.activeSavedViewId = null;
-			if (this.query.markdownOnly) this.query.attachmentsOnly = false;
-			this.updateToggleStates(row2);
-			this.renderList();
-		}, "Markdown files only");
-
-		this.createToggle(row2, "Files", "smart-explorer-toggle-attach", () => {
-			this.query.attachmentsOnly = !this.query.attachmentsOnly;
-			this.activeSavedViewId = null;
-			if (this.query.attachmentsOnly) this.query.markdownOnly = false;
-			this.updateToggleStates(row2);
-			this.renderList();
-		}, "Attachment files only");
-
 		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
 
-		this.updateToggleStates(row2);
+		this.updateViewModeControl();
 		this.updateManualOrderControls();
 		this.registerKeyboardShortcuts(container);
 	}
@@ -311,63 +305,28 @@ export class SmartExplorerView extends ItemView {
 		return select;
 	}
 
-	private renderSavedViewControls(parent: HTMLElement) {
-		const options = getSavedViewOptions(this.plugin.settings.savedViews);
-		const select = parent.createEl("select", { cls: "smart-explorer-saved-view" });
-		select.createEl("option", { value: "", text: "Custom view" });
-		for (const view of options) {
-			select.createEl("option", { value: view.id, text: view.name });
-		}
-		select.value = this.activeSavedViewId ?? "";
-		select.addEventListener("change", () => {
-			const selected = options.find((view) => view.id === select.value);
-			if (!selected) {
-				this.activeSavedViewId = null;
-				return;
-			}
-			this.activeSavedViewId = selected.id;
-			this.query = cloneSavedViewQuery(selected.query);
-			this.manualOrderEditing = false;
-			this.rebuildView();
-		});
-
-		const saveBtn = parent.createEl("button", {
-			cls: "smart-explorer-save-view",
-			text: "Save",
-		});
-		saveBtn.addEventListener("mouseenter", (e) => this.showTooltip("Save current view", e));
-		saveBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		saveBtn.addEventListener("click", () => {
-			const name = activeWindow.prompt("Save view name", "");
-			if (!name || name.trim().length === 0) return;
-			const view = {
-				id: `custom-${Date.now()}`,
-				name: name.trim(),
-				query: cloneSavedViewQuery(this.query),
-			};
-			this.plugin.settings.savedViews.push(view);
-			this.activeSavedViewId = view.id;
-			void this.plugin.saveSettings();
-			this.rebuildView();
-		});
-
-		const deleteBtn = parent.createEl("button", {
-			cls: "smart-explorer-delete-view",
-			text: "Delete",
-		});
-		const isCustomView = this.activeSavedViewId?.startsWith("custom-") ?? false;
-		deleteBtn.disabled = !isCustomView;
-		deleteBtn.addEventListener("mouseenter", (e) => this.showTooltip("Delete saved view", e));
-		deleteBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		deleteBtn.addEventListener("click", () => {
-			if (!this.activeSavedViewId?.startsWith("custom-")) return;
-			this.plugin.settings.savedViews = this.plugin.settings.savedViews.filter(
-				(view) => view.id !== this.activeSavedViewId,
-			);
-			this.activeSavedViewId = null;
-			void this.plugin.saveSettings();
-			this.rebuildView();
-		});
+	private showToolbarMenu(e: MouseEvent) {
+		const state = getToolbarMoreState(this.query.sort, this.manualOrderUndoStack.length > 0);
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.manualOrderEditing ? "Finish editing order" : "Edit manual order")
+				.setIcon("list-ordered")
+				.setDisabled(!state.canEditManualOrder)
+				.onClick(() => {
+					this.manualOrderEditing = !this.manualOrderEditing;
+					this.updateManualOrderControls();
+					this.renderList();
+				}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Undo manual reorder").setIcon("undo").setDisabled(!state.canUndoManualOrder).onClick(() => this.undoManualReorder()),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Reset filters").setIcon("filter-x").onClick(() => this.resetFilters()),
+		);
+		menu.showAtMouseEvent(e);
 	}
 
 	private rebuildView() {
@@ -376,9 +335,21 @@ export class SmartExplorerView extends ItemView {
 		this.renderList();
 	}
 
+	private resetFilters() {
+		this.query.searchText = "";
+		this.query.extension = null;
+		this.query.fileKind = "all";
+		this.query.modifiedWithinDays = null;
+		this.rebuildView();
+	}
+
 	private modifiedRangeValue(): string {
 		const option = MODIFIED_RANGE_OPTIONS.find((o) => o.days === this.query.modifiedWithinDays);
 		return option?.value ?? "all";
+	}
+
+	private resolvedViewMode(): ViewMode {
+		return resolveExplorerViewMode(this.viewMode, this.query.sort);
 	}
 
 	private registerKeyboardShortcuts(container: HTMLElement) {
@@ -394,7 +365,6 @@ export class SmartExplorerView extends ItemView {
 				if (this.query.searchText) {
 					e.preventDefault();
 					this.query.searchText = "";
-					this.activeSavedViewId = null;
 					if (this.searchInput) this.searchInput.value = "";
 					this.renderList();
 					return;
@@ -407,52 +377,20 @@ export class SmartExplorerView extends ItemView {
 		};
 	}
 
-	private createToggle(
-		parent: HTMLElement,
-		label: string,
-		cls: string,
-		onClick: () => void,
-		tooltip?: string,
-	) {
-		const btn = parent.createEl("button", { cls, text: label });
-		if (tooltip) {
-			btn.addEventListener("mouseenter", (e) => this.showTooltip(tooltip, e));
-			btn.addEventListener("mouseleave", () => this.hideTooltip());
-		}
-		btn.addEventListener("click", onClick);
-		return btn;
-	}
-
-	private updateToggleStates(row: HTMLElement) {
-		const mdBtn = row.querySelector(".smart-explorer-toggle-md");
-		const attachBtn = row.querySelector(".smart-explorer-toggle-attach");
-		if (mdBtn) mdBtn.classList.toggle("is-active", this.query.markdownOnly);
-		if (attachBtn) attachBtn.classList.toggle("is-active", this.query.attachmentsOnly);
-	}
-
 	private updateManualOrderControls() {
 		const isManualSort = this.query.sort === "manual";
-		if (this.manualEditBtn) {
-			this.manualEditBtn.disabled = !isManualSort;
-			this.manualEditBtn.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
-			this.manualEditBtn.setText(this.manualOrderEditing ? "Done" : "Edit order");
-		}
-		if (this.manualUndoBtn) {
-			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
-		}
+		this.moreBtn?.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
 		if (this.listContainer) {
 			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
 		}
 	}
 
-	private populateExtensions(select: HTMLSelectElement) {
-		const currentValue = this.query.extension ?? select.value;
-		while (select.options.length > 1) select.remove(1);
-		const extensions = this.fileIndex.getExtensions();
-		for (const ext of extensions) {
-			select.createEl("option", { value: ext, text: `.${ext}` });
-		}
-		select.value = currentValue || "";
+	private updateViewModeControl() {
+		if (!this.viewModeBtn) return;
+		const mode = this.resolvedViewMode();
+		this.viewModeBtn.setText(mode === "tree" ? "▸" : "☰");
+		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
+		this.viewModeBtn.disabled = this.query.sort === "manual";
 	}
 
 	private renderList() {
@@ -496,15 +434,13 @@ export class SmartExplorerView extends ItemView {
 			clearBtn.addEventListener("click", () => {
 				this.query = {
 					searchText: "",
-					sort: this.plugin.settings.defaultSort,
-					group: this.plugin.settings.defaultGroup,
+					sort: this.query.sort,
+					group: this.query.group,
 					extension: null,
-					markdownOnly: false,
-					attachmentsOnly: false,
+					fileKind: "all",
 					modifiedWithinDays: null,
 				};
 				this.manualOrderEditing = false;
-				this.activeSavedViewId = null;
 				const container = this.containerEl.children[1] as HTMLElement;
 				this.renderShell(container);
 				this.renderList();
@@ -513,6 +449,17 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
+		if (this.resolvedViewMode() === "tree") {
+			const tree = buildTree(records, this.query, this.manualOrderIndex);
+			for (const node of tree.children) {
+				this.listContainer.appendChild(this.createTreeNodeElement(node));
+			}
+			this.updateFileCount(displayed, records.length);
+			this.updateViewModeControl();
+			this.updateManualOrderControls();
+			return;
+		}
+
 		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
 		const isManualSort = this.query.sort === "manual";
 
@@ -559,7 +506,31 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		this.updateFileCount(displayed, records.length);
+		this.updateViewModeControl();
 		this.updateManualOrderControls();
+	}
+
+	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
+		if (node.type === "folder") {
+			const details = createEl("details", { cls: "smart-explorer-tree-folder" });
+			details.open = true;
+			const summary = details.createEl("summary", { cls: "smart-explorer-tree-folder-summary" });
+			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
+			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
+			summary.createSpan({ cls: "smart-explorer-tree-folder-icon", text: "▣" });
+			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: String(countTreeFiles(node)) });
+			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
+			for (const child of node.children) {
+				children.appendChild(this.createTreeNodeElement(child));
+			}
+			return details;
+		}
+
+		const row = this.createRowElement(node.record);
+		row.classList.add("smart-explorer-tree-file");
+		row.style.setProperty("--smart-explorer-depth", String(node.depth));
+		return row;
 	}
 
 	private createRowElement(record: FileRecord): HTMLElement {
@@ -766,4 +737,9 @@ export class SmartExplorerView extends ItemView {
 			await leaf.openFile(file);
 		}
 	}
+}
+
+function countTreeFiles(node: ExplorerTreeNode): number {
+	if (node.type === "file") return 1;
+	return node.children.reduce((count, child) => count + countTreeFiles(child), 0);
 }
