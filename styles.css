@@ -50,7 +50,7 @@
 }
 
 .smart-explorer-toolbar-filters select {
-	flex-basis: 100%;
+	flex: 1 1 calc(50% - 3px);
 }
 
 .smart-explorer-toolbar button {
@@ -65,7 +65,6 @@
 }
 
 .smart-explorer-view-mode,
-.smart-explorer-manual-order,
 .smart-explorer-manual-undo,
 .smart-explorer-filter-toggle {
 	width: 30px;
@@ -88,7 +87,6 @@
 	flex-shrink: 0;
 }
 
-.smart-explorer-manual-order.is-hidden,
 .smart-explorer-manual-undo.is-hidden,
 .smart-explorer-clear-filters.is-hidden {
 	display: none;
@@ -219,11 +217,21 @@
 	background: var(--background-modifier-hover);
 }
 
-.smart-explorer-row.is-order-editable {
-	cursor: grab;
+.smart-explorer-list.is-manual-sorting .smart-explorer-row {
+	cursor: pointer;
 }
 
-.smart-explorer-row.is-order-editable:active {
+.smart-explorer-row-drag-handle {
+	color: var(--text-faint);
+	cursor: grab;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 16px;
+	margin-left: -2px;
+}
+
+.smart-explorer-row-drag-handle:active {
 	cursor: grabbing;
 }
 

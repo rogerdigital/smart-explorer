@@ -23,7 +23,7 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 ];
 
 const FILE_KIND_OPTIONS: { value: FileKind; text: string }[] = [
-	{ value: "all", text: "All files" },
+	{ value: "all", text: "All" },
 	{ value: "markdown", text: "Markdown" },
 	{ value: "attachments", text: "Attachments" },
 	{ value: "images", text: "Images" },
@@ -48,19 +48,18 @@ export class SmartExplorerView extends ItemView {
 	private viewMode: ViewMode = "tree";
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
-	private manualOrderBtn: HTMLButtonElement | null = null;
 	private manualUndoBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private clearFiltersBtn: HTMLButtonElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
+	private filterToggleBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
-	private manualOrderEditing = false;
 	private manualOrderUndoStack: string[][] = [];
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
@@ -134,11 +133,11 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.listContainer = null;
 		this.viewModeBtn = null;
-		this.manualOrderBtn = null;
 		this.manualUndoBtn = null;
 		this.clearFiltersBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
+		this.filterToggleBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -222,10 +221,8 @@ export class SmartExplorerView extends ItemView {
 		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
 		this.viewModeBtn = row1.createEl("button", {
 			cls: "smart-explorer-view-mode",
-			text: this.resolvedViewMode() === "tree" ? "▸" : "☰",
 		});
-		this.viewModeBtn.setAttribute("aria-label", "Toggle tree/list view");
-		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip("Toggle tree/list view", e));
+		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip(this.viewModeTooltip(), e));
 		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.viewModeBtn.addEventListener("click", () => {
 			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
@@ -233,27 +230,10 @@ export class SmartExplorerView extends ItemView {
 		});
 		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
 			this.query.sort = v as SortMode;
-			if (this.query.sort !== "manual") {
-				this.manualOrderEditing = false;
-			}
 			this.updateManualOrderControls();
 			this.updateViewModeControl();
 			this.renderList();
 		}, this.query.sort);
-
-		this.manualOrderBtn = row1.createEl("button", {
-			cls: "smart-explorer-manual-order",
-		});
-		this.manualOrderBtn.addEventListener("mouseenter", (e) => {
-			this.showTooltip(this.manualOrderEditing ? "Finish editing order" : "Edit manual order", e);
-		});
-		this.manualOrderBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		this.manualOrderBtn.addEventListener("click", () => {
-			if (this.query.sort !== "manual") return;
-			this.manualOrderEditing = !this.manualOrderEditing;
-			this.updateManualOrderControls();
-			this.renderList();
-		});
 
 		this.manualUndoBtn = row1.createEl("button", {
 			cls: "smart-explorer-manual-undo",
@@ -271,13 +251,17 @@ export class SmartExplorerView extends ItemView {
 		const filterToggleBtn = row1.createEl("button", {
 			cls: "smart-explorer-filter-toggle",
 		});
+		this.filterToggleBtn = filterToggleBtn;
 		setIcon(filterToggleBtn, "sliders-horizontal");
 		filterToggleBtn.setAttribute("aria-label", "Show filters");
 		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
 		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		filterToggleBtn.addEventListener("click", () => {
 			row2.classList.toggle("is-collapsed");
-			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
+			filterToggleBtn.classList.toggle(
+				"is-active",
+				hasActiveSearchOrFilters(this.query) || !row2.classList.contains("is-collapsed"),
+			);
 		});
 
 		this.createSelect(row2, GROUP_OPTIONS, "smart-explorer-group", (v) => {
@@ -353,6 +337,11 @@ export class SmartExplorerView extends ItemView {
 		return resolveExplorerViewMode(this.viewMode, this.query.sort);
 	}
 
+	private viewModeTooltip(): string {
+		if (this.query.sort === "manual") return "Manual sort uses list view";
+		return this.resolvedViewMode() === "tree" ? "Tree view" : "List view";
+	}
+
 	private registerKeyboardShortcuts(container: HTMLElement) {
 		container.onkeydown = (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
@@ -380,29 +369,21 @@ export class SmartExplorerView extends ItemView {
 
 	private updateManualOrderControls() {
 		const isManualSort = this.query.sort === "manual";
-		if (this.manualOrderBtn) {
-			this.manualOrderBtn.classList.toggle("is-hidden", !isManualSort);
-			this.manualOrderBtn.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
-			this.manualOrderBtn.setAttribute(
-				"aria-label",
-				this.manualOrderEditing ? "Finish editing order" : "Edit manual order",
-			);
-			this.manualOrderBtn.empty();
-			setIcon(this.manualOrderBtn, this.manualOrderEditing ? "check" : "list-ordered");
-		}
 		if (this.manualUndoBtn) {
 			this.manualUndoBtn.classList.toggle("is-hidden", !isManualSort);
 			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
 		}
 		if (this.listContainer) {
-			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
+			this.listContainer.classList.toggle("is-manual-sorting", isManualSort);
 		}
 	}
 
 	private updateViewModeControl() {
 		if (!this.viewModeBtn) return;
 		const mode = this.resolvedViewMode();
-		this.viewModeBtn.setText(mode === "tree" ? "▸" : "☰");
+		this.viewModeBtn.empty();
+		setIcon(this.viewModeBtn, mode === "tree" ? "folder-tree" : "list");
+		this.viewModeBtn.setAttribute("aria-label", this.viewModeTooltip());
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
 	}
@@ -483,34 +464,42 @@ export class SmartExplorerView extends ItemView {
 			}
 		}
 
-		if (isManualSort && this.manualOrderEditing && this.listContainer) {
+		if (isManualSort && this.listContainer) {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
 				onReorder: (path, toIndex, sectionId) => this.handleManualReorder(path, toIndex, sections, sectionId),
-			});
-			this.dragSortManager.enable();
+				});
+				this.dragSortManager.enable();
 
-			// Attach drag handlers to rendered rows
-			for (const section of sections) {
-				for (const record of section.records) {
-					const row = this.listContainer.querySelector<HTMLElement>(
-						`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
-					);
-					if (row) {
-						this.dragSortManager.attachRow(row, record.path, section.id);
-					}
+				this.attachManualDragRows(sections);
+
+				if (this.virtualList) {
+					this.virtualList.onAfterRender = () => {
+						this.attachManualDragRows(sections);
+						this.dragSortManager?.reapplyDragClass();
+					};
 				}
 			}
 
-			if (this.virtualList) {
-				this.virtualList.onAfterRender = () => this.dragSortManager?.reapplyDragClass();
-			}
-		}
-
 		this.updateFileCount(displayed, records.length);
 		this.updateViewModeControl();
-		this.updateManualOrderControls();
+			this.updateManualOrderControls();
+		}
+
+	private attachManualDragRows(sections: { id: string; records: FileRecord[] }[]) {
+		if (!this.listContainer || !this.dragSortManager) return;
+		this.dragSortManager.clearRows();
+		for (const section of sections) {
+			for (const record of section.records) {
+				const row = this.listContainer.querySelector<HTMLElement>(
+					`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
+				);
+				if (!row) continue;
+				const handle = row.querySelector<HTMLElement>(".smart-explorer-row-drag-handle");
+				this.dragSortManager.attachRow(row, record.path, section.id, handle ?? row);
+			}
+		}
 	}
 
 	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
@@ -544,8 +533,14 @@ export class SmartExplorerView extends ItemView {
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
 		}
-		if (this.query.sort === "manual" && this.manualOrderEditing) {
-			row.classList.add("is-order-editable");
+		if (this.query.sort === "manual") {
+			const handle = row.createSpan({ cls: "smart-explorer-row-drag-handle" });
+			setIcon(handle, "grip-vertical");
+			handle.setAttribute("aria-label", "Drag to reorder");
+			handle.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			});
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
@@ -601,7 +596,9 @@ export class SmartExplorerView extends ItemView {
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
-		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasActiveSearchOrFilters(this.query));
+		const hasFilters = hasActiveSearchOrFilters(this.query);
+		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasFilters);
+		this.filterToggleBtn?.classList.toggle("is-active", hasFilters || !(this.filterRow?.classList.contains("is-collapsed") ?? true));
 	}
 
 	private formatDate(ts: number): string {
@@ -655,7 +652,6 @@ export class SmartExplorerView extends ItemView {
 		sections: { id: string; records: FileRecord[] }[],
 		sectionId?: string,
 	) {
-		if (!this.manualOrderEditing) return;
 		const order = this.plugin.settings.manualOrder;
 		const nextOrder = reorderManualOrder(
 			order,
