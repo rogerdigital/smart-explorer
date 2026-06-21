@@ -9,7 +9,6 @@ import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { resolveExplorerViewMode } from "./viewMode";
-import { getToolbarMoreState } from "./toolbarState";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -49,10 +48,10 @@ export class SmartExplorerView extends ItemView {
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
 	private manualOrderBtn: HTMLButtonElement | null = null;
+	private manualUndoBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
-	private moreBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
@@ -134,9 +133,9 @@ export class SmartExplorerView extends ItemView {
 		this.listContainer = null;
 		this.viewModeBtn = null;
 		this.manualOrderBtn = null;
+		this.manualUndoBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
-		this.moreBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -253,6 +252,15 @@ export class SmartExplorerView extends ItemView {
 			this.renderList();
 		});
 
+		this.manualUndoBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-undo",
+		});
+		setIcon(this.manualUndoBtn, "undo");
+		this.manualUndoBtn.setAttribute("aria-label", "Undo manual reorder");
+		this.manualUndoBtn.addEventListener("mouseenter", (e) => this.showTooltip("Undo manual reorder", e));
+		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
+
 		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		this.filterRow = row2;
 		row2.classList.add("is-collapsed");
@@ -268,13 +276,6 @@ export class SmartExplorerView extends ItemView {
 			row2.classList.toggle("is-collapsed");
 			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
 		});
-
-		this.moreBtn = row1.createEl("button", {
-			cls: "smart-explorer-more",
-			text: "⋯",
-		});
-		this.moreBtn.setAttribute("aria-label", "More actions");
-		this.moreBtn.addEventListener("click", (e) => this.showToolbarMenu(e));
 
 		this.createSelect(row2, GROUP_OPTIONS, "smart-explorer-group", (v) => {
 			this.query.group = v as GroupMode;
@@ -322,31 +323,10 @@ export class SmartExplorerView extends ItemView {
 		return select;
 	}
 
-	private showToolbarMenu(e: MouseEvent) {
-		const state = getToolbarMoreState(this.query.sort, this.manualOrderUndoStack.length > 0);
-		const menu = new Menu();
-		menu.addItem((item) =>
-			item.setTitle("Undo manual reorder").setIcon("undo").setDisabled(!state.canUndoManualOrder).onClick(() => this.undoManualReorder()),
-		);
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item.setTitle("Reset filters").setIcon("filter-x").onClick(() => this.resetFilters()),
-		);
-		menu.showAtMouseEvent(e);
-	}
-
 	private rebuildView() {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.renderShell(container);
 		this.renderList();
-	}
-
-	private resetFilters() {
-		this.query.searchText = "";
-		this.query.extension = null;
-		this.query.fileKind = "all";
-		this.query.modifiedWithinDays = null;
-		this.rebuildView();
 	}
 
 	private modifiedRangeValue(): string {
@@ -394,6 +374,10 @@ export class SmartExplorerView extends ItemView {
 			);
 			this.manualOrderBtn.empty();
 			setIcon(this.manualOrderBtn, this.manualOrderEditing ? "check" : "list-ordered");
+		}
+		if (this.manualUndoBtn) {
+			this.manualUndoBtn.classList.toggle("is-hidden", !isManualSort);
+			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
 		}
 		if (this.listContainer) {
 			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
