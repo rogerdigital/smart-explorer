@@ -9,6 +9,7 @@ import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { resolveExplorerViewMode } from "./viewMode";
+import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -50,6 +51,7 @@ export class SmartExplorerView extends ItemView {
 	private manualOrderBtn: HTMLButtonElement | null = null;
 	private manualUndoBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
+	private clearFiltersBtn: HTMLButtonElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private filterRow: HTMLElement | null = null;
 	private selectedPath: string | null = null;
@@ -134,6 +136,7 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn = null;
 		this.manualOrderBtn = null;
 		this.manualUndoBtn = null;
+		this.clearFiltersBtn = null;
 		this.searchInput = null;
 		this.filterRow = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
@@ -300,7 +303,14 @@ export class SmartExplorerView extends ItemView {
 			this.modifiedRangeValue(),
 		);
 
-		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
+		const countRow = toolbar.createDiv({ cls: "smart-explorer-count-row" });
+		this.clearFiltersBtn = countRow.createEl("button", { cls: "smart-explorer-clear-filters is-hidden" });
+		setIcon(this.clearFiltersBtn, "x");
+		this.clearFiltersBtn.setAttribute("aria-label", "Clear search and filters");
+		this.clearFiltersBtn.addEventListener("mouseenter", (e) => this.showTooltip("Clear search and filters", e));
+		this.clearFiltersBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.clearFiltersBtn.addEventListener("click", () => this.clearSearchAndFilters());
+		this.fileCountEl = countRow.createDiv({ cls: "smart-explorer-file-count" });
 
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
@@ -327,6 +337,11 @@ export class SmartExplorerView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.renderShell(container);
 		this.renderList();
+	}
+
+	private clearSearchAndFilters() {
+		this.query = clearSearchAndFilters(this.query);
+		this.rebuildView();
 	}
 
 	private modifiedRangeValue(): string {
@@ -431,18 +446,7 @@ export class SmartExplorerView extends ItemView {
 			empty.createSpan({ text: "No files match your filters." });
 			const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
 			clearBtn.addEventListener("click", () => {
-				this.query = {
-					searchText: "",
-					sort: this.query.sort,
-					group: this.query.group,
-					extension: null,
-					fileKind: "all",
-					modifiedWithinDays: null,
-				};
-				this.manualOrderEditing = false;
-				const container = this.containerEl.children[1] as HTMLElement;
-				this.renderShell(container);
-				this.renderList();
+				this.clearSearchAndFilters();
 			});
 			return;
 		}
@@ -597,6 +601,7 @@ export class SmartExplorerView extends ItemView {
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasActiveSearchOrFilters(this.query));
 	}
 
 	private formatDate(ts: number): string {
