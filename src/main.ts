@@ -23,6 +23,30 @@ export default class SmartExplorerPlugin extends Plugin {
 			callback: () => { void this.activateView(); },
 		});
 
+		this.addCommand({
+			id: "focus-search",
+			name: "Focus search",
+			callback: () => { void this.runInExplorerView((view) => view.focusSearch()); },
+		});
+
+		this.addCommand({
+			id: "reveal-active-file",
+			name: "Reveal active file",
+			callback: () => { void this.runInExplorerView((view) => view.revealActiveFile()); },
+		});
+
+		this.addCommand({
+			id: "new-note",
+			name: "New note",
+			callback: () => { void this.runInExplorerView((view) => view.startCreateNote()); },
+		});
+
+		this.addCommand({
+			id: "new-folder",
+			name: "New folder",
+			callback: () => { void this.runInExplorerView((view) => view.startCreateFolder()); },
+		});
+
 		this.addSettingTab(new SmartExplorerSettingTab(this.app, this));
 	}
 
@@ -37,18 +61,25 @@ export default class SmartExplorerPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	async activateView() {
+	async activateView(): Promise<SmartExplorerView | null> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(SMART_EXPLORER_VIEW_TYPE)[0];
 		if (!leaf) {
 			const leftLeaf = workspace.getLeftLeaf(false);
-			if (!leftLeaf) return;
+			if (!leftLeaf) return null;
 			leaf = leftLeaf;
 			await leaf.setViewState({
 				type: SMART_EXPLORER_VIEW_TYPE,
 				active: true,
 			});
 		}
-		void workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
+		return leaf.view instanceof SmartExplorerView ? leaf.view : null;
+	}
+
+	private async runInExplorerView(action: (view: SmartExplorerView) => void) {
+		const view = await this.activateView();
+		if (!view) return;
+		action(view);
 	}
 }
