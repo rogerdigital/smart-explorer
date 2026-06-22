@@ -67,4 +67,14 @@ describe("buildTree", () => {
 		const archive = expectFolder(projects.children[0]);
 		expect(archive.children.map((node) => node.path)).toEqual(["projects/archive/alpha.md"]);
 	});
+
+	it("includes empty folders when folder paths are provided", () => {
+		const tree = buildTree([
+			makeRecord("Home.md"),
+		], baseQuery, undefined, ["00-Inbox", "02-Projects/Atlas Launch"]);
+
+		expect(tree.children.map((node) => node.path)).toEqual(["00-Inbox", "02-Projects", "Home.md"]);
+		const projects = expectFolder(tree.children.find((node) => node.path === "02-Projects"));
+		expect(projects.children.map((node) => node.path)).toEqual(["02-Projects/Atlas Launch"]);
+	});
 });

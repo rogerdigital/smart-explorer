@@ -16,3 +16,7 @@ export function shouldOpenTreeFolder(folderPath: string, state: TreeExpansionSta
 		getAncestorFolderPaths(state.selectedPath ?? "").includes(folderPath)
 	);
 }
+
+export function areAllTreeFoldersExpanded(folderPaths: string[], expandedPaths: ReadonlySet<string>): boolean {
+	return folderPaths.length > 0 && folderPaths.every((path) => expandedPaths.has(path));
+}

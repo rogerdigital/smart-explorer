@@ -8,12 +8,14 @@
 - [ ] `manifest.json` version matches `versions.json` entry
 - [ ] Changelog / release notes drafted
 - [ ] No network requests in codebase (`grep -rn "fetch\|XMLHttpRequest" src/`)
-- [ ] No file write operations (`grep -rn "vault\.modify\|vault\.create\|vault\.delete" src/`)
+- [ ] Vault writes are limited to explicit create-note/create-folder actions and plugin settings
 - [ ] Plugin tested in Obsidian vault:
   - [ ] Loads without console errors
   - [ ] File list displays correctly
   - [ ] Sort, group, filter controls work
   - [ ] Tree/list toggle works
+  - [ ] New note and new folder actions create items in the expected folder
+  - [ ] Collapse all and reveal active file work in tree mode
   - [ ] Manual drag handles and undo work in Manual sort mode
   - [ ] Settings persist after reload
   - [ ] Vault events (create/delete/rename/modify) trigger reindex

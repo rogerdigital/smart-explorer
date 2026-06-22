@@ -1,4 +1,4 @@
-import { getAncestorFolderPaths, shouldOpenTreeFolder } from "../treeExpansion";
+import { areAllTreeFoldersExpanded, getAncestorFolderPaths, shouldOpenTreeFolder } from "../treeExpansion";
 
 describe("tree expansion", () => {
 	it("keeps folders closed by default", () => {
@@ -38,5 +38,11 @@ describe("tree expansion", () => {
 			"Projects",
 			"Projects/Atlas",
 		]);
+	});
+
+	it("detects whether every visible folder is explicitly expanded", () => {
+		expect(areAllTreeFoldersExpanded(["Projects", "Projects/Atlas"], new Set(["Projects"]))).toBe(false);
+		expect(areAllTreeFoldersExpanded(["Projects", "Projects/Atlas"], new Set(["Projects", "Projects/Atlas"]))).toBe(true);
+		expect(areAllTreeFoldersExpanded([], new Set())).toBe(false);
 	});
 });

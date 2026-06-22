@@ -13,11 +13,20 @@ jest.mock(
 			addSettingTab() {}
 		},
 		ItemView: class {},
+		Modal: class {
+			contentEl = { empty: jest.fn() };
+			setTitle() {}
+			open() {}
+			close() {}
+		},
+		Notice: class {},
 		PluginSettingTab: class {},
 		Setting: class {},
 		Platform: { isMobile: false },
 		Menu: class {},
+		setIcon: jest.fn(),
 		TFile: class {},
+		TFolder: class {},
 	}),
 	{ virtual: true },
 );

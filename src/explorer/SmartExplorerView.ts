@@ -1,4 +1,4 @@
-import { ItemView, Menu, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, Modal, Notice, Platform, Setting, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "../constants";
 import { FileIndex } from "./FileIndex";
 import { VirtualList } from "./VirtualList";
@@ -11,7 +11,9 @@ import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerViewMode } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
-import { shouldOpenTreeFolder } from "./treeExpansion";
+import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion";
+import { appendMarkdownExtension, buildCreationPath, getParentFolderPath, resolveCreationFolder } from "./creationPath";
+import { revealPathInContainer } from "./revealPath";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -52,9 +54,13 @@ export class SmartExplorerView extends ItemView {
 	private viewMode: ViewMode = "tree";
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
+	private newNoteBtn: HTMLButtonElement | null = null;
+	private newFolderBtn: HTMLButtonElement | null = null;
 	private manualUndoBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
 	private clearFiltersBtn: HTMLButtonElement | null = null;
+	private collapseTreeBtn: HTMLButtonElement | null = null;
+	private revealActiveFileBtn: HTMLButtonElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
 	private searchRow: HTMLElement | null = null;
 	private searchToggleBtn: HTMLButtonElement | null = null;
@@ -62,7 +68,9 @@ export class SmartExplorerView extends ItemView {
 	private filterToggleBtn: HTMLButtonElement | null = null;
 	private groupSelect: HTMLSelectElement | null = null;
 	private selectedPath: string | null = null;
+	private selectedFolderPath: string | null = null;
 	private treeExpandedPaths: Set<string> = new Set();
+	private visibleTreeFolderPaths: string[] = [];
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
@@ -121,6 +129,7 @@ export class SmartExplorerView extends ItemView {
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
 		this.listContainer.addEventListener("wheel", (e) => this.handleListWheel(e), { passive: false });
+		this.listContainer.addEventListener("contextmenu", (e) => this.showBlankContextMenu(e));
 	}
 
 	private showIndexing() {
@@ -142,8 +151,12 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.listContainer = null;
 		this.viewModeBtn = null;
+		this.newNoteBtn = null;
+		this.newFolderBtn = null;
 		this.manualUndoBtn = null;
 		this.clearFiltersBtn = null;
+		this.collapseTreeBtn = null;
+		this.revealActiveFileBtn = null;
 		this.searchInput = null;
 		this.searchRow = null;
 		this.searchToggleBtn = null;
@@ -166,8 +179,8 @@ export class SmartExplorerView extends ItemView {
 					order.push(file.path);
 					this.buildManualOrderIndex();
 				}
-				this.scheduleRebuild();
 			}
+			this.scheduleRebuild();
 		}));
 
 		this.registerEvent(events.on("delete", (file) => {
@@ -176,8 +189,13 @@ export class SmartExplorerView extends ItemView {
 				if (this.selectedPath === file.path) {
 					this.selectedPath = null;
 				}
-				this.scheduleRebuild();
+			} else if (file instanceof TFolder) {
+				if (this.selectedFolderPath === file.path || this.selectedFolderPath?.startsWith(`${file.path}/`)) {
+					this.selectedFolderPath = null;
+				}
+				this.collapseFolderPath(file.path);
 			}
+			this.scheduleRebuild();
 		}));
 
 		this.registerEvent(events.on("rename", (file, oldPath) => {
@@ -193,8 +211,10 @@ export class SmartExplorerView extends ItemView {
 					order[idx] = file.path;
 					this.buildManualOrderIndex();
 				}
-				this.scheduleRebuild();
+			} else if (file instanceof TFolder) {
+				this.updateFolderPathState(oldPath, file.path);
 			}
+			this.scheduleRebuild();
 		}));
 
 		this.registerEvent(events.on("modify", (file) => {
@@ -322,13 +342,46 @@ export class SmartExplorerView extends ItemView {
 		);
 
 		const countRow = toolbar.createDiv({ cls: "smart-explorer-count-row" });
-		this.fileCountEl = countRow.createDiv({ cls: "smart-explorer-file-count" });
-		this.clearFiltersBtn = countRow.createEl("button", { cls: "smart-explorer-clear-filters is-hidden" });
+		const treeActionGroup = countRow.createDiv({ cls: "smart-explorer-tree-actions" });
+		this.newNoteBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-new-note" });
+		setIcon(this.newNoteBtn, "file-plus");
+		this.newNoteBtn.setAttribute("aria-label", "New note");
+		this.newNoteBtn.addEventListener("mouseenter", (e) => this.showTooltip("New note", e));
+		this.newNoteBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.newNoteBtn.addEventListener("click", () => {
+			void this.createNote();
+		});
+
+		this.newFolderBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-new-folder" });
+		setIcon(this.newFolderBtn, "folder-plus");
+		this.newFolderBtn.setAttribute("aria-label", "New folder");
+		this.newFolderBtn.addEventListener("mouseenter", (e) => this.showTooltip("New folder", e));
+		this.newFolderBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.newFolderBtn.addEventListener("click", () => {
+			void this.createFolder();
+		});
+
+		this.collapseTreeBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-toggle-tree" });
+		this.collapseTreeBtn.addEventListener("mouseenter", (e) => this.showTooltip(this.treeToggleTooltip(), e));
+		this.collapseTreeBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.collapseTreeBtn.addEventListener("click", () => this.toggleAllFolders());
+
+		this.revealActiveFileBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-reveal-active" });
+		setIcon(this.revealActiveFileBtn, "locate-fixed");
+		this.revealActiveFileBtn.setAttribute("aria-label", "Reveal active file");
+		this.revealActiveFileBtn.addEventListener("mouseenter", (e) => this.showTooltip("Reveal active file", e));
+		this.revealActiveFileBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.revealActiveFileBtn.addEventListener("click", () => this.revealActiveFile());
+
+		this.clearFiltersBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-clear-filters is-hidden" });
 		setIcon(this.clearFiltersBtn, "x");
 		this.clearFiltersBtn.setAttribute("aria-label", "Clear search and filters");
 		this.clearFiltersBtn.addEventListener("mouseenter", (e) => this.showTooltip("Clear search and filters", e));
 		this.clearFiltersBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.clearFiltersBtn.addEventListener("click", () => this.clearSearchAndFilters());
+
+		const countMeta = countRow.createDiv({ cls: "smart-explorer-count-meta" });
+		this.fileCountEl = countMeta.createDiv({ cls: "smart-explorer-file-count" });
 
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
@@ -443,6 +496,9 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
 		this.groupSelect?.classList.toggle("is-hidden", mode === "tree");
+		this.updateTreeToggleControl();
+		this.collapseTreeBtn?.classList.toggle("is-hidden", mode !== "tree");
+		this.revealActiveFileBtn?.classList.toggle("is-hidden", mode !== "tree");
 	}
 
 	private renderList() {
@@ -465,7 +521,11 @@ export class SmartExplorerView extends ItemView {
 			records = records.filter((r) => !hiddenExts.has(r.extension));
 		}
 
-		if (records.length === 0) {
+		const mode = this.resolvedViewMode();
+		const hasFilters = hasActiveSearchOrFilters(this.query);
+		const folderPaths = mode === "tree" && !hasFilters ? this.fileIndex.getFolderPaths() : [];
+
+		if (records.length === 0 && folderPaths.length === 0) {
 			this.listContainer.createDiv({
 				cls: "smart-explorer-empty",
 				text: "No files in vault.",
@@ -478,21 +538,16 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const sections = buildSections(records, this.query, this.manualOrderIndex);
-
-		if (sections.length === 0 || sections.every((s) => s.records.length === 0)) {
-			const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty" });
-			empty.createSpan({ text: "No files match your filters." });
-			const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
-			clearBtn.addEventListener("click", () => {
-				this.clearSearchAndFilters();
-			});
-			return;
-		}
-
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
-		if (this.resolvedViewMode() === "tree") {
+
+		if (mode === "tree") {
+			if (displayed === 0 && folderPaths.length === 0) {
+				this.renderNoMatches();
+				return;
+			}
 			this.syncSelectedPathFromActiveFile();
-			const tree = buildTree(records, this.query, this.manualOrderIndex);
+			const tree = buildTree(records, this.query, this.manualOrderIndex, folderPaths);
+			this.visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
 			for (const node of tree.children) {
 				this.listContainer.appendChild(this.createTreeNodeElement(node));
 			}
@@ -501,6 +556,13 @@ export class SmartExplorerView extends ItemView {
 			this.updateManualOrderControls();
 			return;
 		}
+
+		if (displayed === 0) {
+			this.renderNoMatches();
+			return;
+		}
+
+		this.visibleTreeFolderPaths = [];
 
 		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
 		const isManualSort = this.query.sort === "manual";
@@ -545,6 +607,16 @@ export class SmartExplorerView extends ItemView {
 		this.updateManualOrderControls();
 	}
 
+	private renderNoMatches() {
+		if (!this.listContainer) return;
+		const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty" });
+		empty.createSpan({ text: "No files match your filters." });
+		const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
+		clearBtn.addEventListener("click", () => {
+			this.clearSearchAndFilters();
+		});
+	}
+
 	private attachManualDragRows(sections: { id: string; records: FileRecord[] }[]) {
 		if (!this.listContainer || !this.dragSortManager) return;
 		this.dragSortManager.clearRows();
@@ -563,6 +635,7 @@ export class SmartExplorerView extends ItemView {
 	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
 		if (node.type === "folder") {
 			const details = createEl("details", { cls: "smart-explorer-tree-folder" });
+			details.dataset.path = node.path;
 			details.open = shouldOpenTreeFolder(node.path, {
 				expandedPaths: this.treeExpandedPaths,
 				hasActiveFilters: hasActiveSearchOrFilters(this.query),
@@ -574,16 +647,29 @@ export class SmartExplorerView extends ItemView {
 				} else {
 					this.treeExpandedPaths.delete(node.path);
 				}
+				this.updateTreeToggleControl();
 			});
 			const summary = details.createEl("summary", { cls: "smart-explorer-tree-folder-summary" });
+			summary.classList.toggle("is-selected", this.selectedFolderPath === node.path);
 			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
 			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
-			const folderIcon = summary.createSpan({ cls: "smart-explorer-tree-folder-icon" });
-			setIcon(folderIcon, "folder");
 			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
 			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
 			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
 			summary.addEventListener("mouseleave", () => this.hideTooltip());
+			summary.addEventListener("click", () => {
+				this.selectedFolderPath = node.path;
+				this.selectedPath = null;
+				this.highlightSelected();
+			});
+			summary.addEventListener("contextmenu", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.selectedFolderPath = node.path;
+				this.selectedPath = null;
+				this.highlightSelected();
+				this.showFolderContextMenu(e, node.path);
+			});
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			for (const child of node.children) {
 				children.appendChild(this.createTreeNodeElement(child));
@@ -618,7 +704,7 @@ export class SmartExplorerView extends ItemView {
 		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
 		meta.createSpan({ cls: "smart-explorer-row-parent", text: formatFileParent(record.parentPath) });
 		meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(record.mtime) });
-		if (record.extension) {
+		if (record.extension && !record.isMarkdown) {
 			row.createSpan({ cls: "smart-explorer-row-ext", text: `.${record.extension}` });
 		}
 		const tooltipText = `${record.basename}${record.extension ? "." + record.extension : ""}\nCreated: ${this.formatDate(record.ctime)}\nModified: ${this.formatDate(record.mtime)}`;
@@ -626,6 +712,7 @@ export class SmartExplorerView extends ItemView {
 		row.addEventListener("mouseleave", () => this.hideTooltip());
 		const activate = () => {
 			this.selectedPath = record.path;
+			this.selectedFolderPath = null;
 			void this.openFile(record.path);
 			this.highlightSelected();
 		};
@@ -684,6 +771,125 @@ export class SmartExplorerView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
 			this.selectedPath = activeFile.path;
+		}
+	}
+
+	private getCreationFolder(folderOverride?: string): string {
+		if (folderOverride !== undefined) return folderOverride;
+		return resolveCreationFolder({
+			selectedFolderPath: this.selectedFolderPath,
+			selectedFilePath: this.selectedPath,
+			activeFilePath: this.app.workspace.getActiveFile()?.path ?? null,
+		});
+	}
+
+	private async createNote(folderOverride?: string) {
+		const folderPath = this.getCreationFolder(folderOverride);
+		const name = await this.promptForName("New note", "Untitled");
+		if (!name) return;
+		const fileName = appendMarkdownExtension(name);
+		const path = this.getAvailablePath(buildCreationPath(folderPath, fileName));
+		try {
+			const file = await this.app.vault.create(path, "");
+			this.fileIndex.addFile(file);
+			this.selectedPath = file.path;
+			this.selectedFolderPath = null;
+			this.expandFolderAncestors(getParentFolderPath(file.path));
+			this.renderList();
+			await this.openFile(file.path);
+		} catch (e) {
+			new Notice(`Could not create note: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	private async createFolder(folderOverride?: string) {
+		const parentPath = this.getCreationFolder(folderOverride);
+		const name = await this.promptForName("New folder", "New folder");
+		if (!name) return;
+		const path = this.getAvailablePath(buildCreationPath(parentPath, name));
+		try {
+			await this.app.vault.createFolder(path);
+			this.selectedFolderPath = path;
+			this.selectedPath = null;
+			this.expandFolderAncestors(path);
+			this.renderList();
+		} catch (e) {
+			new Notice(`Could not create folder: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	private promptForName(title: string, initialValue: string): Promise<string | null> {
+		return new Promise((resolve) => {
+			new NamePromptModal(this.app, title, initialValue, resolve).open();
+		});
+	}
+
+	private getAvailablePath(path: string): string {
+		const normalized = path.replace(/^\/+|\/+$/g, "");
+		if (!this.app.vault.getAbstractFileByPath(normalized)) return normalized;
+		const parts = normalized.split("/");
+		const fileName = parts.pop() ?? normalized;
+		const folderPath = parts.join("/");
+		const dotIndex = fileName.lastIndexOf(".");
+		const hasExtension = dotIndex > 0;
+		const base = hasExtension ? fileName.slice(0, dotIndex) : fileName;
+		const ext = hasExtension ? fileName.slice(dotIndex) : "";
+		for (let i = 1; i < 1000; i++) {
+			const candidateName = `${base} ${i}${ext}`;
+			const candidate = buildCreationPath(folderPath, candidateName);
+			if (!this.app.vault.getAbstractFileByPath(candidate)) return candidate;
+		}
+		return normalized;
+	}
+
+	private expandFolderAncestors(folderPath: string) {
+		if (!folderPath) return;
+		const parts = folderPath.split("/");
+		for (let i = 0; i < parts.length; i++) {
+			this.treeExpandedPaths.add(parts.slice(0, i + 1).join("/"));
+		}
+	}
+
+	private toggleAllFolders() {
+		if (areAllTreeFoldersExpanded(this.visibleTreeFolderPaths, this.treeExpandedPaths)) {
+			this.treeExpandedPaths.clear();
+			this.selectedFolderPath = null;
+		} else {
+			this.visibleTreeFolderPaths.forEach((path) => this.treeExpandedPaths.add(path));
+		}
+		this.renderList();
+	}
+
+	private collapseFolderPath(folderPath: string) {
+		for (const path of Array.from(this.treeExpandedPaths)) {
+			if (path === folderPath || path.startsWith(`${folderPath}/`)) {
+				this.treeExpandedPaths.delete(path);
+			}
+		}
+		this.renderList();
+	}
+
+	private updateFolderPathState(oldPath: string, newPath: string) {
+		this.treeExpandedPaths = new Set(
+			Array.from(this.treeExpandedPaths).map((path) => renameNestedPath(path, oldPath, newPath)),
+		);
+		if (this.selectedFolderPath) {
+			this.selectedFolderPath = renameNestedPath(this.selectedFolderPath, oldPath, newPath);
+		}
+	}
+
+	private revealActiveFile() {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) return;
+		this.selectedPath = activeFile.path;
+		this.selectedFolderPath = null;
+		this.expandFolderAncestors(getParentFolderPath(activeFile.path));
+		if (this.resolvedViewMode() !== "tree") {
+			this.viewMode = "tree";
+		}
+		this.renderList();
+		if (this.listContainer) {
+			revealPathInContainer(this.listContainer, activeFile.path);
 		}
 	}
 
@@ -789,6 +995,11 @@ export class SmartExplorerView extends ItemView {
 	private showContextMenu(e: MouseEvent, record: FileRecord) {
 		const menu = new Menu();
 		menu.addItem((item) =>
+			item.setTitle("New note in same folder").setIcon("file-plus").onClick(() => {
+				void this.createNote(record.parentPath);
+			}),
+		);
+		menu.addItem((item) =>
 			item.setTitle("Open in new tab").setIcon("file-plus").onClick(() => {
 				const file = this.app.vault.getAbstractFileByPath(record.path);
 				if (file instanceof TFile) {
@@ -804,12 +1015,80 @@ export class SmartExplorerView extends ItemView {
 		menu.showAtMouseEvent(e);
 	}
 
+	private showFolderContextMenu(e: MouseEvent, folderPath: string) {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle("New note").setIcon("file-plus").onClick(() => {
+				void this.createNote(folderPath);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("New folder").setIcon("folder-plus").onClick(() => {
+				void this.createFolder(folderPath);
+			}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Collapse folders below").setIcon("folder-minus").onClick(() => {
+				this.collapseFolderPath(folderPath);
+			}),
+		);
+		menu.showAtMouseEvent(e);
+	}
+
+	private showBlankContextMenu(e: MouseEvent) {
+		if (e.target !== this.listContainer) return;
+		e.preventDefault();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle("New note").setIcon("file-plus").onClick(() => {
+				void this.createNote();
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("New folder").setIcon("folder-plus").onClick(() => {
+				void this.createFolder();
+			}),
+		);
+		if (this.resolvedViewMode() === "tree") {
+			menu.addSeparator();
+			menu.addItem((item) =>
+				item.setTitle(this.treeToggleTooltip()).setIcon(this.treeToggleIcon()).onClick(() => this.toggleAllFolders()),
+			);
+			menu.addItem((item) =>
+				item.setTitle("Reveal active file").setIcon("locate-fixed").onClick(() => this.revealActiveFile()),
+			);
+		}
+		menu.showAtMouseEvent(e);
+	}
+
+	private treeToggleIcon(): string {
+		return areAllTreeFoldersExpanded(this.visibleTreeFolderPaths, this.treeExpandedPaths) ? "chevron-down" : "chevron-right";
+	}
+
+	private treeToggleTooltip(): string {
+		return areAllTreeFoldersExpanded(this.visibleTreeFolderPaths, this.treeExpandedPaths) ? "Close all folders" : "Open all folders";
+	}
+
+	private updateTreeToggleControl() {
+		if (!this.collapseTreeBtn) return;
+		this.collapseTreeBtn.empty();
+		setIcon(this.collapseTreeBtn, this.treeToggleIcon());
+		this.collapseTreeBtn.setAttribute("aria-label", this.treeToggleTooltip());
+		this.collapseTreeBtn.disabled = this.visibleTreeFolderPaths.length === 0;
+	}
+
 	private highlightSelected() {
 		if (!this.listContainer) return;
 		const rows = this.listContainer.querySelectorAll(".smart-explorer-row");
 		rows.forEach((el) => {
 			const row = el as HTMLElement;
 			row.classList.toggle("is-selected", row.dataset.path === this.selectedPath);
+		});
+		const folderRows = this.listContainer.querySelectorAll<HTMLElement>(".smart-explorer-tree-folder-summary");
+		folderRows.forEach((row) => {
+			const details = row.parentElement;
+			row.classList.toggle("is-selected", details?.dataset.path === this.selectedFolderPath);
 		});
 	}
 
@@ -828,4 +1107,71 @@ export class SmartExplorerView extends ItemView {
 function countTreeFiles(node: ExplorerTreeNode): number {
 	if (node.type === "file") return 1;
 	return node.children.reduce((count, child) => count + countTreeFiles(child), 0);
+}
+
+function collectTreeFolderPaths(nodes: ExplorerTreeNode[]): string[] {
+	return nodes.flatMap((node) => {
+		if (node.type === "file") return [];
+		return [node.path, ...collectTreeFolderPaths(node.children)];
+	});
+}
+
+function renameNestedPath(path: string, oldPrefix: string, newPrefix: string): string {
+	if (path === oldPrefix) return newPrefix;
+	if (path.startsWith(`${oldPrefix}/`)) return `${newPrefix}${path.slice(oldPrefix.length)}`;
+	return path;
+}
+
+class NamePromptModal extends Modal {
+	private value: string;
+	private onSubmit: (value: string | null) => void;
+	private didSubmit = false;
+
+	constructor(app: SmartExplorerView["app"], title: string, initialValue: string, onSubmit: (value: string | null) => void) {
+		super(app);
+		this.setTitle(title);
+		this.value = initialValue;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		new Setting(contentEl)
+			.addText((text) => {
+				text.setValue(this.value);
+				text.inputEl.select();
+				text.inputEl.addEventListener("keydown", (e) => {
+					if (e.key === "Enter") {
+						e.preventDefault();
+						this.submit(text.getValue());
+					}
+				});
+				text.onChange((value) => {
+					this.value = value;
+				});
+			});
+		new Setting(contentEl)
+			.addButton((button) => {
+				button.setButtonText("Create").setCta().onClick(() => this.submit(this.value));
+			})
+			.addButton((button) => {
+				button.setButtonText("Cancel").onClick(() => this.close());
+			});
+	}
+
+	onClose() {
+		this.contentEl.empty();
+		if (!this.didSubmit) {
+			this.onSubmit(null);
+		}
+	}
+
+	private submit(value: string) {
+		const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
+		if (!trimmed) return;
+		this.didSubmit = true;
+		this.onSubmit(trimmed);
+		this.close();
+	}
 }

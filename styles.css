@@ -75,9 +75,14 @@
 }
 
 .smart-explorer-view-mode,
+.smart-explorer-new-note,
+.smart-explorer-new-folder,
 .smart-explorer-manual-undo,
 .smart-explorer-search-toggle,
-.smart-explorer-filter-toggle {
+.smart-explorer-filter-toggle,
+.smart-explorer-toggle-tree,
+.smart-explorer-reveal-active,
+.smart-explorer-clear-filters {
 	width: 30px;
 	min-width: 30px;
 	display: flex;
@@ -103,19 +108,31 @@
 .smart-explorer-count-row {
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: space-between;
 	gap: 6px;
 	min-height: 22px;
 }
 
-.smart-explorer-clear-filters {
-	width: 24px;
-	min-width: 24px;
-	height: 22px;
-	padding: 2px;
+.smart-explorer-tree-actions,
+.smart-explorer-count-meta {
 	display: flex;
 	align-items: center;
-	justify-content: center;
+	gap: 4px;
+	min-width: 0;
+}
+
+.smart-explorer-tree-actions {
+	flex: 0 0 auto;
+}
+
+.smart-explorer-count-meta {
+	justify-content: flex-end;
+	margin-left: auto;
+	flex: 1 1 auto;
+}
+
+.smart-explorer-clear-filters {
+	flex: 0 0 30px;
 }
 
 .smart-explorer-toolbar button:hover {
@@ -160,7 +177,7 @@
 }
 
 .smart-explorer-tree-file {
-	padding-left: calc(6px + var(--smart-explorer-depth, 0) * 14px);
+	padding-left: calc(25px + var(--smart-explorer-depth, 0) * 14px);
 }
 
 .smart-explorer-tree-folder {
@@ -190,8 +207,8 @@
 
 .smart-explorer-tree-disclosure {
 	color: var(--text-faint);
-	flex: 0 0 10px;
-	font-size: var(--font-ui-smallest);
+	flex: 0 0 14px;
+	font-size: 18px;
 	line-height: 1;
 	transform: rotate(0deg);
 	transition: transform 0.12s ease;
@@ -199,12 +216,6 @@
 
 .smart-explorer-tree-folder[open] > .smart-explorer-tree-folder-summary .smart-explorer-tree-disclosure {
 	transform: rotate(90deg);
-}
-
-.smart-explorer-tree-folder-icon {
-	color: var(--text-faint);
-	flex: 0 0 auto;
-	font-size: var(--font-ui-smallest);
 }
 
 .smart-explorer-tree-name {
@@ -393,7 +404,17 @@ body.is-tablet .smart-explorer-manual-undo,
 body.is-phone .smart-explorer-search-toggle,
 body.is-tablet .smart-explorer-search-toggle,
 body.is-phone .smart-explorer-filter-toggle,
-body.is-tablet .smart-explorer-filter-toggle {
+body.is-tablet .smart-explorer-filter-toggle,
+body.is-phone .smart-explorer-toggle-tree,
+body.is-tablet .smart-explorer-toggle-tree,
+body.is-phone .smart-explorer-new-note,
+body.is-tablet .smart-explorer-new-note,
+body.is-phone .smart-explorer-new-folder,
+body.is-tablet .smart-explorer-new-folder,
+body.is-phone .smart-explorer-reveal-active,
+body.is-tablet .smart-explorer-reveal-active,
+body.is-phone .smart-explorer-clear-filters,
+body.is-tablet .smart-explorer-clear-filters {
 	width: 36px;
 	min-width: 36px;
 	padding: 6px;
@@ -446,6 +467,9 @@ body.is-tablet .smart-explorer-clear-btn:active {
 	color: var(--text-faint);
 	text-align: right;
 	padding: 2px 4px 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .smart-explorer-row[draggable="true"] {

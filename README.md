@@ -11,6 +11,7 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 | Category | Options |
 |----------|---------|
 | **Browse** | Folder tree by default, with folder counts and compact hover details |
+| **Create** | Create notes and folders from the toolbar, folder menu, or empty list area |
 | **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual drag order |
 | **Filter** | Search by name/path, file kind (all / markdown / attachments / images), date range (1d / 7d / 30d) |
 | **View** | Tree/list toggle; Manual sort automatically uses list mode for direct drag-and-drop |
@@ -39,7 +40,7 @@ Switch to **Manual** sort mode, then drag the handle beside a file to reorder it
 ## Usage
 
 1. Open via ribbon icon or Command Palette → **Smart Explorer: Open**
-2. Use the first toolbar row for tree/list mode, sorting, search, and filters
+2. Use the first toolbar row for tree/list mode, sorting, new notes/folders, search, and filters
 3. Click search to reveal the search box; click filters for grouping, file kind, and modified-date filters
 4. Click a file to open it in Obsidian
 5. Use the clear button near the file count to clear active search and filters
@@ -59,7 +60,7 @@ Switch to **Manual** sort mode, then drag the handle beside a file to reorder it
 
 ## Privacy
 
-No network requests. All data stays local in your vault.
+No network requests. File writes only happen when you explicitly create a note or folder.
 
 ## Development
 

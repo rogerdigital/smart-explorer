@@ -36,11 +36,16 @@ export function buildTree(
 	records: FileRecord[],
 	query: ExplorerQuery,
 	manualOrderIndex?: Map<string, number>,
+	folderPaths: string[] = [],
 ): ExplorerTreeRoot {
 	const filtered = applyFilters(records, query);
 	const sort = query.sort === "manual" ? "name-asc" : query.sort;
 	const root: ExplorerTreeRoot = { type: "root", path: "", children: [] };
 	const folders = new Map<string, MutableFolderNode>();
+
+	for (const folderPath of folderPaths) {
+		ensureFolderPath(root, folders, folderPath);
+	}
 
 	for (const record of filtered) {
 		const folder = ensureFolderPath(root, folders, record.parentPath);

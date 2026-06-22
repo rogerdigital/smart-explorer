@@ -34,6 +34,7 @@ src/explorer/groupers.ts            Pure grouping functions (5 modes: none, fold
 src/explorer/filters.ts             Pure filter functions (search, extension, file kind, date range)
 src/explorer/filterState.ts         Clear/detect active search and filters
 src/explorer/fileRow.ts             File row display formatting helpers
+src/explorer/creationPath.ts        Pure helpers for new note/folder target paths
 src/explorer/treeFolderInfo.ts      Tree folder hover metadata helpers
 src/explorer/viewMode.ts            Resolves effective tree/list mode, including Manual sort forcing list mode
 
@@ -55,7 +56,7 @@ src/explorer/__tests__/*.test.ts    Unit tests for pure explorer helpers and mod
 - Sorters, groupers, filters, tree models, view-mode helpers, filter-state helpers, and manual-order helpers are pure functions — testable without Obsidian
 - FileIndex is the single source of truth for vault file data
 - Vault events (create/delete/rename/modify) update FileIndex incrementally, debounced at 300ms
-- No network requests and no vault file writes; the plugin only persists its own settings/manual order
+- No network requests. Vault writes are limited to explicit user actions: creating notes/folders and saving plugin settings/manual order.
 - Obsidian CSS variables for theming, prefixed with `.smart-explorer-`
 - Tests use Jest with ts-jest, `__tests__` subdirectory per module
 
@@ -81,6 +82,7 @@ src/explorer/__tests__/*.test.ts    Unit tests for pure explorer helpers and mod
 | Add filter | `filters.ts` + `types.ts` (ExplorerQuery) + `SmartExplorerView.ts` (toolbar) |
 | Change tree view | `TreeModel.ts` / `treeFolderInfo.ts` + `SmartExplorerView.ts` |
 | Change manual ordering | `manualOrder.ts` + `DragSortManager.ts` + `SmartExplorerView.ts` |
+| Change create actions | `creationPath.ts` + `SmartExplorerView.ts` |
 | Change toolbar layout | `SmartExplorerView.ts` (renderToolbar) + `styles.css` |
 | Add settings | `settings.ts` + `settings-tab.ts` + `main.ts` (load/save) |
 | Fix rendering | `SmartExplorerView.ts` + `styles.css` |
