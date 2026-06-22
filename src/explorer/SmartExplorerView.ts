@@ -8,6 +8,7 @@ import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
+import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerViewMode } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
@@ -563,6 +564,8 @@ export class SmartExplorerView extends ItemView {
 			setIcon(folderIcon, "folder");
 			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
 			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
+			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
+			summary.addEventListener("mouseleave", () => this.hideTooltip());
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			for (const child of node.children) {
 				children.appendChild(this.createTreeNodeElement(child));
