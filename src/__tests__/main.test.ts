@@ -34,6 +34,28 @@ jest.mock(
 import SmartExplorerPlugin from "../main";
 
 describe("SmartExplorerPlugin", () => {
+	it("registers command palette actions for core explorer workflows", async () => {
+		const commands: { id: string; name: string }[] = [];
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).app = { workspace: {} };
+		(plugin as any).registerView = jest.fn();
+		(plugin as any).addRibbonIcon = jest.fn();
+		(plugin as any).addCommand = jest.fn((command) => {
+			commands.push({ id: command.id, name: command.name });
+		});
+		(plugin as any).addSettingTab = jest.fn();
+
+		await plugin.onload();
+
+		expect(commands).toEqual([
+			{ id: "open", name: "Open" },
+			{ id: "focus-search", name: "Focus search" },
+			{ id: "reveal-active-file", name: "Reveal active file" },
+			{ id: "new-note", name: "New note" },
+			{ id: "new-folder", name: "New folder" },
+		]);
+	});
+
 	it("opens the smart explorer in the left sidebar by default", async () => {
 		const leftLeaf = {
 			setViewState: jest.fn().mockResolvedValue(undefined),

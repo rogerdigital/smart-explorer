@@ -423,6 +423,10 @@ export class SmartExplorerView extends ItemView {
 		this.rebuildView();
 	}
 
+	focusSearch() {
+		this.toggleSearchRow(true);
+	}
+
 	private toggleSearchRow(forceOpen?: boolean) {
 		if (!this.searchRow || !this.searchToggleBtn) return;
 		const shouldOpen = forceOpen ?? this.searchRow.classList.contains("is-collapsed");
@@ -894,7 +898,7 @@ export class SmartExplorerView extends ItemView {
 		});
 	}
 
-	private startCreateNote(folderOverride?: string) {
+	startCreateNote(folderOverride?: string) {
 		const folderPath = this.getCreationFolder(folderOverride);
 		this.inlineEdit = { kind: "create-note", folderPath, value: "Untitled" };
 		this.expandFolderAncestors(folderPath);
@@ -918,7 +922,7 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
-	private startCreateFolder(folderOverride?: string) {
+	startCreateFolder(folderOverride?: string) {
 		const parentPath = this.getCreationFolder(folderOverride);
 		this.inlineEdit = { kind: "create-folder", folderPath: parentPath, value: "New folder" };
 		this.expandFolderAncestors(parentPath);
@@ -999,7 +1003,7 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
-	private revealActiveFile() {
+	revealActiveFile() {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
 		this.selectedPath = activeFile.path;
