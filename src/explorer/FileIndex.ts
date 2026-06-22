@@ -12,6 +12,10 @@ function isAttachment(ext: string): boolean {
 	return ATTACHMENT_EXTENSIONS.has(ext.toLowerCase());
 }
 
+function normalizeParentPath(parentPath: string | undefined): string {
+	return parentPath === "/" ? "" : parentPath ?? "";
+}
+
 export function normalizeFileRecord(
 	file: TFile,
 	cache: MetadataCache | null,
@@ -21,7 +25,7 @@ export function normalizeFileRecord(
 		path: file.path,
 		basename: file.basename,
 		extension: ext,
-		parentPath: file.parent?.path ?? "",
+		parentPath: normalizeParentPath(file.parent?.path),
 		size: file.stat.size,
 		ctime: file.stat.ctime,
 		mtime: file.stat.mtime,
