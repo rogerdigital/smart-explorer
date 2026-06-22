@@ -54,6 +54,8 @@ export class SmartExplorerView extends ItemView {
 	private fileCountEl: HTMLElement | null = null;
 	private clearFiltersBtn: HTMLButtonElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
+	private searchRow: HTMLElement | null = null;
+	private searchToggleBtn: HTMLButtonElement | null = null;
 	private filterRow: HTMLElement | null = null;
 	private filterToggleBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
@@ -139,6 +141,8 @@ export class SmartExplorerView extends ItemView {
 		this.manualUndoBtn = null;
 		this.clearFiltersBtn = null;
 		this.searchInput = null;
+		this.searchRow = null;
+		this.searchToggleBtn = null;
 		this.filterRow = null;
 		this.filterToggleBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
@@ -239,7 +243,27 @@ export class SmartExplorerView extends ItemView {
 		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
 
-		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-search-row" });
+		const searchToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-search-toggle",
+		});
+		this.searchToggleBtn = searchToggleBtn;
+		setIcon(searchToggleBtn, "search");
+		searchToggleBtn.setAttribute("aria-label", "Show search");
+		searchToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show search", e));
+		searchToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		searchToggleBtn.addEventListener("click", () => {
+			this.toggleSearchRow();
+		});
+
+		const filterToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-filter-toggle",
+		});
+		this.filterToggleBtn = filterToggleBtn;
+		setIcon(filterToggleBtn, "sliders-horizontal");
+		filterToggleBtn.setAttribute("aria-label", "Show filters");
+
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-search-row is-collapsed" });
+		this.searchRow = row2;
 		const searchInput = row2.createEl("input", {
 			type: "text",
 			placeholder: "Search files...",
@@ -255,12 +279,6 @@ export class SmartExplorerView extends ItemView {
 			}, 200);
 		});
 
-		const filterToggleBtn = row2.createEl("button", {
-			cls: "smart-explorer-filter-toggle",
-		});
-		this.filterToggleBtn = filterToggleBtn;
-		setIcon(filterToggleBtn, "sliders-horizontal");
-		filterToggleBtn.setAttribute("aria-label", "Show filters");
 		const filterRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
 		this.filterRow = filterRow;
 		filterRow.classList.add("is-collapsed");
@@ -270,7 +288,7 @@ export class SmartExplorerView extends ItemView {
 			filterRow.classList.toggle("is-collapsed");
 			filterToggleBtn.classList.toggle(
 				"is-active",
-				hasActiveSearchOrFilters(this.query) || !filterRow.classList.contains("is-collapsed"),
+				this.hasActiveFilterControls() || !filterRow.classList.contains("is-collapsed"),
 			);
 		});
 
@@ -338,6 +356,21 @@ export class SmartExplorerView extends ItemView {
 		this.rebuildView();
 	}
 
+	private toggleSearchRow(forceOpen?: boolean) {
+		if (!this.searchRow || !this.searchToggleBtn) return;
+		const shouldOpen = forceOpen ?? this.searchRow.classList.contains("is-collapsed");
+		this.searchRow.classList.toggle("is-collapsed", !shouldOpen);
+		this.searchToggleBtn.classList.toggle("is-active", shouldOpen || this.query.searchText.trim().length > 0);
+		if (shouldOpen) {
+			this.searchInput?.focus();
+			this.searchInput?.select();
+		}
+	}
+
+	private hasActiveFilterControls(): boolean {
+		return this.query.extension !== null || this.query.fileKind !== "all" || this.query.modifiedWithinDays !== null;
+	}
+
 	private modifiedRangeValue(): string {
 		const option = MODIFIED_RANGE_OPTIONS.find((o) => o.days === this.query.modifiedWithinDays);
 		return option?.value ?? "all";
@@ -356,6 +389,7 @@ export class SmartExplorerView extends ItemView {
 		container.onkeydown = (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
 				e.preventDefault();
+				this.toggleSearchRow(true);
 				this.searchInput?.focus();
 				this.searchInput?.select();
 				return;
@@ -367,6 +401,12 @@ export class SmartExplorerView extends ItemView {
 					this.query.searchText = "";
 					if (this.searchInput) this.searchInput.value = "";
 					this.renderList();
+					return;
+				}
+				if (this.searchRow && !this.searchRow.classList.contains("is-collapsed")) {
+					e.preventDefault();
+					this.searchRow.classList.add("is-collapsed");
+					this.searchToggleBtn?.classList.toggle("is-active", this.query.searchText.trim().length > 0);
 					return;
 				}
 				if (this.filterRow && !this.filterRow.classList.contains("is-collapsed")) {
@@ -609,7 +649,14 @@ export class SmartExplorerView extends ItemView {
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
 		const hasFilters = hasActiveSearchOrFilters(this.query);
 		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasFilters);
-		this.filterToggleBtn?.classList.toggle("is-active", hasFilters || !(this.filterRow?.classList.contains("is-collapsed") ?? true));
+		this.searchToggleBtn?.classList.toggle(
+			"is-active",
+			this.query.searchText.trim().length > 0 || !(this.searchRow?.classList.contains("is-collapsed") ?? true),
+		);
+		this.filterToggleBtn?.classList.toggle(
+			"is-active",
+			this.hasActiveFilterControls() || !(this.filterRow?.classList.contains("is-collapsed") ?? true),
+		);
 	}
 
 	private formatDate(ts: number): string {

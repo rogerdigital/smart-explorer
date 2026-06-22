@@ -24,6 +24,10 @@
 	flex-wrap: wrap;
 }
 
+.smart-explorer-search-row.is-collapsed {
+	display: none;
+}
+
 .smart-explorer-search {
 	width: 100%;
 	padding: 4px 8px;
@@ -72,6 +76,7 @@
 
 .smart-explorer-view-mode,
 .smart-explorer-manual-undo,
+.smart-explorer-search-toggle,
 .smart-explorer-filter-toggle {
 	width: 30px;
 	min-width: 30px;
