@@ -1,4 +1,4 @@
-import { App, MetadataCache, TFile } from "obsidian";
+import type { App, MetadataCache, TAbstractFile, TFile, TFolder } from "obsidian";
 import type { FileRecord } from "../types";
 
 const ATTACHMENT_EXTENSIONS = new Set([
@@ -95,7 +95,18 @@ export class FileIndex {
 		return Array.from(exts).sort();
 	}
 
+	getFolderPaths(): string[] {
+		return this.app.vault.getAllLoadedFiles()
+			.filter((file): file is TFolder => isFolder(file) && file.path !== "/")
+			.map((folder) => folder.path)
+			.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+	}
+
 	get size(): number {
 		return this.records.size;
 	}
+}
+
+function isFolder(file: TAbstractFile): file is TFolder {
+	return "children" in file && !("extension" in file);
 }
