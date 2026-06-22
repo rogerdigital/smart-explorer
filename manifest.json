@@ -3,7 +3,7 @@
 	"name": "Smart Explorer",
 	"version": "0.3.3",
 	"minAppVersion": "1.7.2",
-	"description": "Browse, sort, group, filter, and preview vault files from a side-pane explorer.",
+	"description": "Browse, sort, group, filter, and manually order vault files from a tree-first side-pane explorer.",
 	"author": "Roger Deng",
 	"authorUrl": "https://github.com/rogerdigital",
 	"isDesktopOnly": false

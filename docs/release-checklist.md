@@ -20,9 +20,10 @@
 
 ## Create Release
 
-- [ ] Create git tag: `git tag v0.1.0`
-- [ ] Push tag: `git push origin v0.1.0`
-- [ ] Create GitHub Release with assets:
+- [ ] Create git tag: `git tag v<version>`
+- [ ] Push tag: `git push origin v<version>`
+- [ ] Confirm the release workflow created or updated the GitHub Release
+- [ ] Confirm release assets are attached:
   - [ ] `main.js`
   - [ ] `manifest.json`
   - [ ] `styles.css`
