@@ -382,9 +382,24 @@ body.is-tablet .smart-explorer-toolbar select {
 
 body.is-phone .smart-explorer-toolbar button,
 body.is-tablet .smart-explorer-toolbar button {
+	box-sizing: border-box;
 	min-height: 36px;
 	padding: 6px 10px;
 	font-size: var(--font-ui-small);
+}
+
+body.is-phone .smart-explorer-view-mode,
+body.is-tablet .smart-explorer-view-mode,
+body.is-phone .smart-explorer-manual-undo,
+body.is-tablet .smart-explorer-manual-undo,
+body.is-phone .smart-explorer-search-toggle,
+body.is-tablet .smart-explorer-search-toggle,
+body.is-phone .smart-explorer-filter-toggle,
+body.is-tablet .smart-explorer-filter-toggle {
+	width: 36px;
+	min-width: 36px;
+	padding: 6px;
+	flex: 0 0 36px;
 }
 
 body.is-phone .smart-explorer-row,
@@ -394,6 +409,14 @@ body.is-tablet .smart-explorer-row {
 	-webkit-user-select: none;
 	user-select: none;
 	-webkit-tap-highlight-color: transparent;
+}
+
+body.is-phone .smart-explorer-row-drag-handle,
+body.is-tablet .smart-explorer-row-drag-handle {
+	flex: 0 0 36px;
+	align-self: stretch;
+	margin-left: -10px;
+	touch-action: none;
 }
 
 body.is-phone .smart-explorer-section-header,
@@ -418,18 +441,6 @@ body.is-tablet .smart-explorer-toolbar button:active {
 body.is-phone .smart-explorer-clear-btn:active,
 body.is-tablet .smart-explorer-clear-btn:active {
 	background: var(--background-modifier-hover);
-}
-
-/* --- Toolbar filter collapse (mobile) --- */
-
-body.is-phone .smart-explorer-filter-toggle,
-body.is-tablet .smart-explorer-filter-toggle {
-	min-height: 36px;
-	min-width: 36px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
 }
 
 .smart-explorer-file-count {
