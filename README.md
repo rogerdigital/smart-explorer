@@ -1,6 +1,6 @@
 # Smart Explorer
 
-A smarter side-pane explorer for browsing, filtering, and manually sorting your [Obsidian](https://obsidian.md) files.
+A tree-first side-pane explorer for browsing, filtering, and manually sorting your [Obsidian](https://obsidian.md) files.
 
 Built for vaults with hundreds or thousands of notes where the default file tree falls short, especially project folders that need a human priority order instead of only alphabetical sorting.
 
@@ -10,11 +10,11 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 
 | Category | Options |
 |----------|---------|
-| **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual (drag-and-drop) |
-| **Group** | Folder, extension, modified month, top-level folder |
+| **Browse** | Folder tree by default, with folder counts and compact hover details |
+| **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual drag order |
 | **Filter** | Search by name/path, file kind (all / markdown / attachments / images), date range (1d / 7d / 30d) |
-| **View** | Folder tree by default, with a flat list mode for global sorting and manual order |
-| **Keyboard** | Focus search, clear search, move through rows, and open selected files from the keyboard |
+| **View** | Tree/list toggle; Manual sort automatically uses list mode for direct drag-and-drop |
+| **Keyboard** | Focus search, clear search, move through rows, and open selected files |
 | **Settings** | Default sort/group mode, hidden extensions, reset manual order |
 
 ### Manual Drag-and-Drop Sorting
@@ -39,10 +39,11 @@ Switch to **Manual** sort mode, then drag the handle beside a file to reorder it
 ## Usage
 
 1. Open via ribbon icon or Command Palette → **Smart Explorer: Open**
-2. Toolbar controls tree/list mode and sorting
-3. Use the filter button for grouping, file kind, and modified-date filters
+2. Use the first toolbar row for tree/list mode, sorting, search, and filters
+3. Click search to reveal the search box; click filters for grouping, file kind, and modified-date filters
 4. Click a file to open it in Obsidian
-5. Defaults persist in **Settings → Community Plugins → Smart Explorer**
+5. Use the clear button near the file count to clear active search and filters
+6. Defaults persist in **Settings → Community Plugins → Smart Explorer**
 
 ### Keyboard
 
@@ -67,6 +68,7 @@ npm install       # install dependencies
 npm run dev       # watch mode
 npm run build     # type-check + production build
 npm test          # unit tests
+npm run lint      # eslint
 ```
 
 ## License

@@ -1,5 +1,7 @@
 # Smart Explorer Development Plan
 
+> Historical plan. This file records the original implementation direction and intentionally includes ideas that are no longer in the current product, such as preview panels and saved views. Use `README.md` for user-facing behavior and `AGENTS.md` / `CLAUDE.md` for the current code map.
+
 ## 1. Positioning
 
 **Plugin name:** Smart Explorer
