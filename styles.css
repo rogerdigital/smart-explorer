@@ -273,6 +273,23 @@
 	min-width: 0;
 }
 
+.smart-explorer-inline-edit-row {
+	cursor: default;
+}
+
+.smart-explorer-inline-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 24px;
+	padding: 2px 6px;
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+	color: var(--text-normal);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--interactive-accent);
+	border-radius: var(--radius-s);
+}
+
 .smart-explorer-row-meta {
 	display: none;
 	gap: 8px;
