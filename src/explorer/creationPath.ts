@@ -25,3 +25,18 @@ export function appendMarkdownExtension(name: string): string {
 export function buildCreationPath(folderPath: string, name: string): string {
 	return folderPath ? `${folderPath}/${name}` : name;
 }
+
+export function buildSiblingPath(path: string, nextName: string): string {
+	return buildCreationPath(getParentFolderPath(path), nextName);
+}
+
+export function buildFileRenamePath(path: string, nextBasename: string): string {
+	const fileName = path.split("/").pop() ?? path;
+	const dotIndex = fileName.lastIndexOf(".");
+	const extension = dotIndex > 0 ? fileName.slice(dotIndex) : "";
+	return buildSiblingPath(path, `${nextBasename}${extension}`);
+}
+
+export function getPathName(path: string): string {
+	return path.split("/").pop() ?? path;
+}

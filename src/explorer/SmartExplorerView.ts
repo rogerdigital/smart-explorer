@@ -12,7 +12,7 @@ import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerViewMode } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion";
-import { appendMarkdownExtension, buildCreationPath, getParentFolderPath, resolveCreationFolder } from "./creationPath";
+import { appendMarkdownExtension, buildCreationPath, buildFileRenamePath, buildSiblingPath, getParentFolderPath, getPathName, resolveCreationFolder } from "./creationPath";
 import { revealPathInContainer } from "./revealPath";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
@@ -47,6 +47,12 @@ const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
 
 const LIST_WHEEL_SCROLL_MULTIPLIER = 0.45;
 
+type InlineEditState =
+	| { kind: "create-note"; folderPath: string; value: string }
+	| { kind: "create-folder"; folderPath: string; value: string }
+	| { kind: "rename-file"; path: string; value: string }
+	| { kind: "rename-folder"; path: string; value: string };
+
 export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
@@ -79,6 +85,7 @@ export class SmartExplorerView extends ItemView {
 	private manualOrderUndoStack: string[][] = [];
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
+	private inlineEdit: InlineEditState | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
@@ -163,6 +170,7 @@ export class SmartExplorerView extends ItemView {
 		this.filterRow = null;
 		this.filterToggleBtn = null;
 		this.groupSelect = null;
+		this.inlineEdit = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -349,7 +357,7 @@ export class SmartExplorerView extends ItemView {
 		this.newNoteBtn.addEventListener("mouseenter", (e) => this.showTooltip("New note", e));
 		this.newNoteBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.newNoteBtn.addEventListener("click", () => {
-			void this.createNote();
+			this.startCreateNote();
 		});
 
 		this.newFolderBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-new-folder" });
@@ -358,7 +366,7 @@ export class SmartExplorerView extends ItemView {
 		this.newFolderBtn.addEventListener("mouseenter", (e) => this.showTooltip("New folder", e));
 		this.newFolderBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.newFolderBtn.addEventListener("click", () => {
-			void this.createFolder();
+			this.startCreateFolder();
 		});
 
 		this.collapseTreeBtn = treeActionGroup.createEl("button", { cls: "smart-explorer-toggle-tree" });
@@ -524,8 +532,9 @@ export class SmartExplorerView extends ItemView {
 		const mode = this.resolvedViewMode();
 		const hasFilters = hasActiveSearchOrFilters(this.query);
 		const folderPaths = mode === "tree" && !hasFilters ? this.fileIndex.getFolderPaths() : [];
+		const hasInlineCreate = this.hasInlineCreate();
 
-		if (records.length === 0 && folderPaths.length === 0) {
+		if (records.length === 0 && folderPaths.length === 0 && !hasInlineCreate) {
 			this.listContainer.createDiv({
 				cls: "smart-explorer-empty",
 				text: "No files in vault.",
@@ -541,13 +550,17 @@ export class SmartExplorerView extends ItemView {
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
 		if (mode === "tree") {
-			if (displayed === 0 && folderPaths.length === 0) {
+			if (displayed === 0 && folderPaths.length === 0 && !hasInlineCreate) {
 				this.renderNoMatches();
 				return;
 			}
 			this.syncSelectedPathFromActiveFile();
 			const tree = buildTree(records, this.query, this.manualOrderIndex, folderPaths);
 			this.visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
+			const rootCreateEl = this.createInlineCreateElement("", 0);
+			if (rootCreateEl) {
+				this.listContainer.appendChild(rootCreateEl);
+			}
 			for (const node of tree.children) {
 				this.listContainer.appendChild(this.createTreeNodeElement(node));
 			}
@@ -557,12 +570,16 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 
-		if (displayed === 0) {
+		if (displayed === 0 && !hasInlineCreate) {
 			this.renderNoMatches();
 			return;
 		}
 
 		this.visibleTreeFolderPaths = [];
+		const rootCreateEl = this.createInlineCreateElement("", 0, true);
+		if (rootCreateEl) {
+			this.listContainer.appendChild(rootCreateEl);
+		}
 
 		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
 		const isManualSort = this.query.sort === "manual";
@@ -617,6 +634,10 @@ export class SmartExplorerView extends ItemView {
 		});
 	}
 
+	private hasInlineCreate(): boolean {
+		return this.inlineEdit?.kind === "create-note" || this.inlineEdit?.kind === "create-folder";
+	}
+
 	private attachManualDragRows(sections: { id: string; records: FileRecord[] }[]) {
 		if (!this.listContainer || !this.dragSortManager) return;
 		this.dragSortManager.clearRows();
@@ -630,6 +651,84 @@ export class SmartExplorerView extends ItemView {
 				this.dragSortManager.attachRow(row, record.path, section.id, handle ?? row);
 			}
 		}
+	}
+
+	private createInlineCreateElement(folderPath: string, depth: number, force = false): HTMLElement | null {
+		if (!this.inlineEdit || (this.inlineEdit.kind !== "create-note" && this.inlineEdit.kind !== "create-folder")) {
+			return null;
+		}
+		if (!force && this.inlineEdit.folderPath !== folderPath) return null;
+		const row = createDiv({ cls: "smart-explorer-row smart-explorer-inline-edit-row" });
+		row.setAttribute("role", "option");
+		if (this.resolvedViewMode() === "tree") {
+			row.classList.add("smart-explorer-tree-file");
+			row.style.setProperty("--smart-explorer-depth", String(depth));
+		}
+		row.appendChild(this.createInlineEditInput(
+			this.inlineEdit.value,
+			this.inlineEdit.kind === "create-note" ? "File name" : "Folder name",
+		));
+		return row;
+	}
+
+	private createInlineEditInput(value: string, ariaLabel: string): HTMLInputElement {
+		const input = createEl("input", {
+			type: "text",
+			value,
+			cls: "smart-explorer-inline-input",
+			attr: { "aria-label": ariaLabel },
+		});
+		let handled = false;
+		input.addEventListener("input", () => {
+			if (this.inlineEdit) this.inlineEdit.value = input.value;
+		});
+		input.addEventListener("click", (e) => e.stopPropagation());
+		input.addEventListener("mousedown", (e) => e.stopPropagation());
+		input.addEventListener("contextmenu", (e) => e.stopPropagation());
+		input.addEventListener("keydown", (e) => {
+			e.stopPropagation();
+			if (e.key === "Enter") {
+				e.preventDefault();
+				handled = true;
+				void this.commitInlineEdit(input.value);
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				handled = true;
+				this.cancelInlineEdit();
+			}
+		});
+		input.addEventListener("blur", () => {
+			if (!handled) this.cancelInlineEdit();
+		});
+		window.setTimeout(() => {
+			input.focus();
+			input.select();
+		}, 0);
+		return input;
+	}
+
+	private async commitInlineEdit(rawValue: string) {
+		const value = rawValue.trim().replace(/^\/+|\/+$/g, "");
+		const state = this.inlineEdit;
+		if (!state) return;
+		if (!value) {
+			new Notice("Name cannot be empty.");
+			return;
+		}
+
+		if (state.kind === "create-note") {
+			await this.createNoteFromName(state.folderPath, value);
+		} else if (state.kind === "create-folder") {
+			await this.createFolderFromName(state.folderPath, value);
+		} else if (state.kind === "rename-file" || state.kind === "rename-folder") {
+			await this.renameItemToName(state.path, value);
+		}
+	}
+
+	private cancelInlineEdit() {
+		if (!this.inlineEdit) return;
+		this.inlineEdit = null;
+		this.renderList();
 	}
 
 	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
@@ -653,7 +752,11 @@ export class SmartExplorerView extends ItemView {
 			summary.classList.toggle("is-selected", this.selectedFolderPath === node.path);
 			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
 			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
-			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
+			if (this.inlineEdit?.kind === "rename-folder" && this.inlineEdit.path === node.path) {
+				summary.appendChild(this.createInlineEditInput(this.inlineEdit.value, "Folder name"));
+			} else {
+				summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
+			}
 			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
 			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
 			summary.addEventListener("mouseleave", () => this.hideTooltip());
@@ -671,6 +774,10 @@ export class SmartExplorerView extends ItemView {
 				this.showFolderContextMenu(e, node.path);
 			});
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
+			const inlineCreateEl = this.createInlineCreateElement(node.path, node.depth + 1);
+			if (inlineCreateEl) {
+				children.appendChild(inlineCreateEl);
+			}
 			for (const child of node.children) {
 				children.appendChild(this.createTreeNodeElement(child));
 			}
@@ -700,7 +807,11 @@ export class SmartExplorerView extends ItemView {
 				e.stopPropagation();
 			});
 		}
-		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
+		if (this.inlineEdit?.kind === "rename-file" && this.inlineEdit.path === record.path) {
+			row.appendChild(this.createInlineEditInput(this.inlineEdit.value, "File name"));
+		} else {
+			row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
+		}
 		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
 		meta.createSpan({ cls: "smart-explorer-row-parent", text: formatFileParent(record.parentPath) });
 		meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(record.mtime) });
@@ -783,15 +894,20 @@ export class SmartExplorerView extends ItemView {
 		});
 	}
 
-	private async createNote(folderOverride?: string) {
+	private startCreateNote(folderOverride?: string) {
 		const folderPath = this.getCreationFolder(folderOverride);
-		const name = await this.promptForName("New note", "Untitled");
-		if (!name) return;
+		this.inlineEdit = { kind: "create-note", folderPath, value: "Untitled" };
+		this.expandFolderAncestors(folderPath);
+		this.renderList();
+	}
+
+	private async createNoteFromName(folderPath: string, name: string) {
 		const fileName = appendMarkdownExtension(name);
 		const path = this.getAvailablePath(buildCreationPath(folderPath, fileName));
 		try {
 			const file = await this.app.vault.create(path, "");
 			this.fileIndex.addFile(file);
+			this.inlineEdit = null;
 			this.selectedPath = file.path;
 			this.selectedFolderPath = null;
 			this.expandFolderAncestors(getParentFolderPath(file.path));
@@ -802,13 +918,18 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
-	private async createFolder(folderOverride?: string) {
+	private startCreateFolder(folderOverride?: string) {
 		const parentPath = this.getCreationFolder(folderOverride);
-		const name = await this.promptForName("New folder", "New folder");
-		if (!name) return;
+		this.inlineEdit = { kind: "create-folder", folderPath: parentPath, value: "New folder" };
+		this.expandFolderAncestors(parentPath);
+		this.renderList();
+	}
+
+	private async createFolderFromName(parentPath: string, name: string) {
 		const path = this.getAvailablePath(buildCreationPath(parentPath, name));
 		try {
 			await this.app.vault.createFolder(path);
+			this.inlineEdit = null;
 			this.selectedFolderPath = path;
 			this.selectedPath = null;
 			this.expandFolderAncestors(path);
@@ -818,9 +939,9 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
-	private promptForName(title: string, initialValue: string): Promise<string | null> {
+	private promptForConfirmation(title: string, message: string, cta: string): Promise<boolean> {
 		return new Promise((resolve) => {
-			new NamePromptModal(this.app, title, initialValue, resolve).open();
+			new ConfirmModal(this.app, title, message, cta, resolve).open();
 		});
 	}
 
@@ -890,6 +1011,109 @@ export class SmartExplorerView extends ItemView {
 		this.renderList();
 		if (this.listContainer) {
 			revealPathInContainer(this.listContainer, activeFile.path);
+		}
+	}
+
+	private async openFileInLeaf(path: string, leafType: "tab" | "right" | "window") {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		try {
+			const leaf = leafType === "right"
+				? this.app.workspace.getLeaf("split", "vertical")
+				: leafType === "window"
+					? this.app.workspace.openPopoutLeaf()
+					: this.app.workspace.getLeaf("tab");
+			await leaf.openFile(file);
+		} catch (e) {
+			new Notice(`Could not open file: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	private copyPath(path: string) {
+		void navigator.clipboard.writeText(path);
+	}
+
+	private async openInDefaultApp(path: string) {
+		const shell = getElectronShell();
+		const absolutePath = this.getAbsoluteVaultPath(path);
+		if (!shell || !absolutePath) {
+			new Notice("Open in default app is only available for local desktop vaults.");
+			return;
+		}
+		const error = await shell.openPath(absolutePath);
+		if (error) new Notice(`Could not open in default app: ${error}`);
+	}
+
+	private revealInFinder(path: string) {
+		const shell = getElectronShell();
+		const absolutePath = this.getAbsoluteVaultPath(path);
+		if (!shell || !absolutePath) {
+			new Notice("Reveal in finder is only available for local desktop vaults.");
+			return;
+		}
+		shell.showItemInFolder(absolutePath);
+	}
+
+	private getAbsoluteVaultPath(path: string): string | null {
+		const adapter = this.app.vault.adapter as unknown;
+		if (!hasBasePath(adapter)) return null;
+		return `${adapter.getBasePath()}/${path}`;
+	}
+
+	private startRenameItem(path: string) {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!file) return;
+		this.inlineEdit = file instanceof TFile
+			? { kind: "rename-file", path, value: file.basename }
+			: { kind: "rename-folder", path, value: getPathName(path) };
+		this.renderList();
+	}
+
+	private async renameItemToName(path: string, nextName: string) {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!file) return;
+		const currentBasename = file instanceof TFile ? file.basename : getPathName(path);
+		if (nextName === currentBasename) {
+			this.cancelInlineEdit();
+			return;
+		}
+		const nextPath = file instanceof TFile
+			? buildFileRenamePath(path, nextName)
+			: buildSiblingPath(path, nextName);
+		const existing = this.app.vault.getAbstractFileByPath(nextPath);
+		if (existing && existing !== file) {
+			new Notice("An item with that name already exists.");
+			return;
+		}
+		try {
+			await this.app.vault.rename(file, nextPath);
+			this.inlineEdit = null;
+			this.selectedPath = file instanceof TFile ? nextPath : null;
+			this.selectedFolderPath = file instanceof TFolder ? nextPath : null;
+			this.renderList();
+		} catch (e) {
+			new Notice(`Could not rename item: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	private async deleteItem(path: string) {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!file) return;
+		const confirmed = await this.promptForConfirmation(
+			"Delete item",
+			`Move "${path.split("/").pop() ?? path}" to trash?`,
+			"Delete",
+		);
+		if (!confirmed) return;
+		try {
+			await this.app.fileManager.trashFile(file);
+			if (this.selectedPath === path) this.selectedPath = null;
+			if (this.selectedFolderPath === path || this.selectedFolderPath?.startsWith(`${path}/`)) {
+				this.selectedFolderPath = null;
+			}
+			this.renderList();
+		} catch (e) {
+			new Notice(`Could not delete item: ${e instanceof Error ? e.message : String(e)}`);
 		}
 	}
 
@@ -995,21 +1219,47 @@ export class SmartExplorerView extends ItemView {
 	private showContextMenu(e: MouseEvent, record: FileRecord) {
 		const menu = new Menu();
 		menu.addItem((item) =>
-			item.setTitle("New note in same folder").setIcon("file-plus").onClick(() => {
-				void this.createNote(record.parentPath);
-			}),
-		);
-		menu.addItem((item) =>
 			item.setTitle("Open in new tab").setIcon("file-plus").onClick(() => {
-				const file = this.app.vault.getAbstractFileByPath(record.path);
-				if (file instanceof TFile) {
-					void this.app.workspace.getLeaf("tab").openFile(file);
-				}
+				void this.openFileInLeaf(record.path, "tab");
 			}),
 		);
 		menu.addItem((item) =>
-			item.setTitle("Copy path").setIcon("copy").onClick(() => {
-				void navigator.clipboard.writeText(record.path);
+			item.setTitle("Open to the right").setIcon("separator-vertical").onClick(() => {
+				void this.openFileInLeaf(record.path, "right");
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Open in new window").setIcon("picture-in-picture").onClick(() => {
+				void this.openFileInLeaf(record.path, "window");
+			}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("New note in same folder").setIcon("file-plus").onClick(() => {
+				this.startCreateNote(record.parentPath);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Copy path").setIcon("copy").onClick(() => this.copyPath(record.path)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Open in default app").setIcon("external-link").onClick(() => {
+				void this.openInDefaultApp(record.path);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => this.revealInFinder(record.path)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Rename...").setIcon("pencil").onClick(() => {
+				this.startRenameItem(record.path);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Delete").setIcon("trash").onClick(() => {
+				void this.deleteItem(record.path);
 			}),
 		);
 		menu.showAtMouseEvent(e);
@@ -1019,18 +1269,35 @@ export class SmartExplorerView extends ItemView {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item.setTitle("New note").setIcon("file-plus").onClick(() => {
-				void this.createNote(folderPath);
+				this.startCreateNote(folderPath);
 			}),
 		);
 		menu.addItem((item) =>
 			item.setTitle("New folder").setIcon("folder-plus").onClick(() => {
-				void this.createFolder(folderPath);
+				this.startCreateFolder(folderPath);
 			}),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item.setTitle("Collapse folders below").setIcon("folder-minus").onClick(() => {
 				this.collapseFolderPath(folderPath);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Copy path").setIcon("copy").onClick(() => this.copyPath(folderPath)),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => this.revealInFinder(folderPath)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Rename...").setIcon("pencil").onClick(() => {
+				this.startRenameItem(folderPath);
+			}),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Delete").setIcon("trash").onClick(() => {
+				void this.deleteItem(folderPath);
 			}),
 		);
 		menu.showAtMouseEvent(e);
@@ -1042,12 +1309,12 @@ export class SmartExplorerView extends ItemView {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item.setTitle("New note").setIcon("file-plus").onClick(() => {
-				void this.createNote();
+				this.startCreateNote();
 			}),
 		);
 		menu.addItem((item) =>
 			item.setTitle("New folder").setIcon("folder-plus").onClick(() => {
-				void this.createFolder();
+				this.startCreateFolder();
 			}),
 		);
 		if (this.resolvedViewMode() === "tree") {
@@ -1122,38 +1389,46 @@ function renameNestedPath(path: string, oldPrefix: string, newPrefix: string): s
 	return path;
 }
 
-class NamePromptModal extends Modal {
-	private value: string;
-	private onSubmit: (value: string | null) => void;
+type DesktopAdapter = {
+	getBasePath(): string;
+};
+
+type ElectronShell = {
+	openPath(path: string): Promise<string>;
+	showItemInFolder(path: string): void;
+};
+
+function hasBasePath(adapter: unknown): adapter is DesktopAdapter {
+	return typeof adapter === "object" && adapter !== null && "getBasePath" in adapter
+		&& typeof (adapter as DesktopAdapter).getBasePath === "function";
+}
+
+function getElectronShell(): ElectronShell | null {
+	const electronRequire = (window as Window & { require?: (module: string) => { shell?: ElectronShell } }).require;
+	return electronRequire?.("electron").shell ?? null;
+}
+
+class ConfirmModal extends Modal {
+	private message: string;
+	private cta: string;
+	private onSubmit: (value: boolean) => void;
 	private didSubmit = false;
 
-	constructor(app: SmartExplorerView["app"], title: string, initialValue: string, onSubmit: (value: string | null) => void) {
+	constructor(app: SmartExplorerView["app"], title: string, message: string, cta: string, onSubmit: (value: boolean) => void) {
 		super(app);
 		this.setTitle(title);
-		this.value = initialValue;
+		this.message = message;
+		this.cta = cta;
 		this.onSubmit = onSubmit;
 	}
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		new Setting(contentEl)
-			.addText((text) => {
-				text.setValue(this.value);
-				text.inputEl.select();
-				text.inputEl.addEventListener("keydown", (e) => {
-					if (e.key === "Enter") {
-						e.preventDefault();
-						this.submit(text.getValue());
-					}
-				});
-				text.onChange((value) => {
-					this.value = value;
-				});
-			});
+		contentEl.createEl("p", { text: this.message });
 		new Setting(contentEl)
 			.addButton((button) => {
-				button.setButtonText("Create").setCta().onClick(() => this.submit(this.value));
+				button.setButtonText(this.cta).setWarning().onClick(() => this.submit(true));
 			})
 			.addButton((button) => {
 				button.setButtonText("Cancel").onClick(() => this.close());
@@ -1163,15 +1438,13 @@ class NamePromptModal extends Modal {
 	onClose() {
 		this.contentEl.empty();
 		if (!this.didSubmit) {
-			this.onSubmit(null);
+			this.onSubmit(false);
 		}
 	}
 
-	private submit(value: string) {
-		const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
-		if (!trimmed) return;
+	private submit(value: boolean) {
 		this.didSubmit = true;
-		this.onSubmit(trimmed);
+		this.onSubmit(value);
 		this.close();
 	}
 }
