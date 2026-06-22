@@ -562,7 +562,7 @@ export class SmartExplorerView extends ItemView {
 			const folderIcon = summary.createSpan({ cls: "smart-explorer-tree-folder-icon" });
 			setIcon(folderIcon, "folder");
 			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
-			summary.createSpan({ cls: "smart-explorer-tree-count", text: String(countTreeFiles(node)) });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			for (const child of node.children) {
 				children.appendChild(this.createTreeNodeElement(child));

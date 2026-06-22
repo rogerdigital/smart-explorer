@@ -211,7 +211,7 @@
 }
 
 .smart-explorer-tree-name {
-	flex: 1;
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -221,7 +221,8 @@
 .smart-explorer-tree-count {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smallest);
-	flex-shrink: 0;
+	flex: 0 0 auto;
+	margin-left: 2px;
 }
 
 .smart-explorer-row:hover {
