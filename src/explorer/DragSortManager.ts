@@ -63,23 +63,23 @@ export class DragSortManager {
 		this.rows = [];
 	}
 
-	attachRow(row: HTMLElement, path: string, sectionId?: string) {
+	attachRow(row: HTMLElement, path: string, sectionId?: string, handle: HTMLElement = row) {
 		this.rows.push({ el: row, path, sectionId });
 
-		row.draggable = true;
-		row.addEventListener("dragstart", (e) => {
+		handle.draggable = true;
+		handle.addEventListener("dragstart", (e) => {
 			this.draggedPath = path;
 			this.draggedRow = row;
 			row.classList.add("is-dragging");
 			e.dataTransfer!.effectAllowed = "move";
 			e.dataTransfer!.setData("text/plain", path);
 		});
-		row.addEventListener("dragend", () => {
+		handle.addEventListener("dragend", () => {
 			this.cleanup();
 		});
 
 		if (Platform.isMobile) {
-			this.attachTouchHandlers(row, path);
+			this.attachTouchHandlers(row, handle, path);
 		}
 	}
 
@@ -91,8 +91,8 @@ export class DragSortManager {
 		if (row) row.classList.add("is-dragging");
 	}
 
-	private attachTouchHandlers(row: HTMLElement, path: string) {
-		row.addEventListener("touchstart", (e) => {
+	private attachTouchHandlers(row: HTMLElement, handle: HTMLElement, path: string) {
+		handle.addEventListener("touchstart", (e) => {
 			if (!this.enabled) return;
 			const touch = e.touches[0]!;
 			this.touchStartX = touch.clientX;
@@ -103,7 +103,7 @@ export class DragSortManager {
 			}, LONG_PRESS_MS);
 		}, { passive: true });
 
-		row.addEventListener("touchmove", (e) => {
+		handle.addEventListener("touchmove", (e) => {
 			if (this.longPressTimer) {
 				const touch = e.touches[0]!;
 				const dx = touch.clientX - this.touchStartX;
@@ -120,7 +120,7 @@ export class DragSortManager {
 			}
 		});
 
-		row.addEventListener("touchend", () => {
+		handle.addEventListener("touchend", () => {
 			if (this.longPressTimer) {
 				window.clearTimeout(this.longPressTimer);
 				this.longPressTimer = null;
@@ -130,7 +130,7 @@ export class DragSortManager {
 			}
 		});
 
-		row.addEventListener("touchcancel", () => {
+		handle.addEventListener("touchcancel", () => {
 			if (this.longPressTimer) {
 				window.clearTimeout(this.longPressTimer);
 				this.longPressTimer = null;

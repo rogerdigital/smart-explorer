@@ -8,8 +8,9 @@ import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
 import { reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
+import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerViewMode } from "./viewMode";
-import { getToolbarMoreState } from "./toolbarState";
+import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -23,7 +24,7 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 ];
 
 const FILE_KIND_OPTIONS: { value: FileKind; text: string }[] = [
-	{ value: "all", text: "All files" },
+	{ value: "all", text: "All" },
 	{ value: "markdown", text: "Markdown" },
 	{ value: "attachments", text: "Attachments" },
 	{ value: "images", text: "Images" },
@@ -41,6 +42,8 @@ const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
 	{ value: "manual", text: "Manual" },
 ];
 
+const LIST_WHEEL_SCROLL_MULTIPLIER = 0.45;
+
 export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
@@ -48,17 +51,20 @@ export class SmartExplorerView extends ItemView {
 	private viewMode: ViewMode = "tree";
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
+	private manualUndoBtn: HTMLButtonElement | null = null;
 	private fileCountEl: HTMLElement | null = null;
+	private clearFiltersBtn: HTMLButtonElement | null = null;
 	private searchInput: HTMLInputElement | null = null;
+	private searchRow: HTMLElement | null = null;
+	private searchToggleBtn: HTMLButtonElement | null = null;
 	private filterRow: HTMLElement | null = null;
-	private moreBtn: HTMLButtonElement | null = null;
+	private filterToggleBtn: HTMLButtonElement | null = null;
 	private selectedPath: string | null = null;
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
-	private manualOrderEditing = false;
 	private manualOrderUndoStack: string[][] = [];
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
@@ -111,6 +117,7 @@ export class SmartExplorerView extends ItemView {
 
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+		this.listContainer.addEventListener("wheel", (e) => this.handleListWheel(e), { passive: false });
 	}
 
 	private showIndexing() {
@@ -132,9 +139,13 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.listContainer = null;
 		this.viewModeBtn = null;
+		this.manualUndoBtn = null;
+		this.clearFiltersBtn = null;
 		this.searchInput = null;
+		this.searchRow = null;
+		this.searchToggleBtn = null;
 		this.filterRow = null;
-		this.moreBtn = null;
+		this.filterToggleBtn = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -197,10 +208,64 @@ export class SmartExplorerView extends ItemView {
 		}, 300);
 	}
 
+	private handleListWheel(e: WheelEvent) {
+		if (!this.listContainer || e.ctrlKey) return;
+		e.preventDefault();
+		this.listContainer.scrollTop += e.deltaY * LIST_WHEEL_SCROLL_MULTIPLIER;
+		this.listContainer.scrollLeft += e.deltaX * LIST_WHEEL_SCROLL_MULTIPLIER;
+	}
+
 	private renderToolbar(container: HTMLElement) {
 		const toolbar = container.createDiv({ cls: "smart-explorer-toolbar" });
 
-		const searchInput = toolbar.createEl("input", {
+		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
+		this.viewModeBtn = row1.createEl("button", {
+			cls: "smart-explorer-view-mode",
+		});
+		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip(this.viewModeTooltip(), e));
+		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.viewModeBtn.addEventListener("click", () => {
+			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
+			this.renderList();
+		});
+		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
+			this.query.sort = v as SortMode;
+			this.updateManualOrderControls();
+			this.updateViewModeControl();
+			this.renderList();
+		}, this.query.sort);
+
+		this.manualUndoBtn = row1.createEl("button", {
+			cls: "smart-explorer-manual-undo",
+		});
+		setIcon(this.manualUndoBtn, "undo");
+		this.manualUndoBtn.setAttribute("aria-label", "Undo manual reorder");
+		this.manualUndoBtn.addEventListener("mouseenter", (e) => this.showTooltip("Undo manual reorder", e));
+		this.manualUndoBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.manualUndoBtn.addEventListener("click", () => this.undoManualReorder());
+
+		const searchToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-search-toggle",
+		});
+		this.searchToggleBtn = searchToggleBtn;
+		setIcon(searchToggleBtn, "search");
+		searchToggleBtn.setAttribute("aria-label", "Show search");
+		searchToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show search", e));
+		searchToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		searchToggleBtn.addEventListener("click", () => {
+			this.toggleSearchRow();
+		});
+
+		const filterToggleBtn = row1.createEl("button", {
+			cls: "smart-explorer-filter-toggle",
+		});
+		this.filterToggleBtn = filterToggleBtn;
+		setIcon(filterToggleBtn, "sliders-horizontal");
+		filterToggleBtn.setAttribute("aria-label", "Show filters");
+
+		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-search-row is-collapsed" });
+		this.searchRow = row2;
+		const searchInput = row2.createEl("input", {
 			type: "text",
 			placeholder: "Search files...",
 			cls: "smart-explorer-search",
@@ -215,63 +280,32 @@ export class SmartExplorerView extends ItemView {
 			}, 200);
 		});
 
-		const row1 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row" });
-		this.viewModeBtn = row1.createEl("button", {
-			cls: "smart-explorer-view-mode",
-			text: this.resolvedViewMode() === "tree" ? "▸" : "☰",
-		});
-		this.viewModeBtn.setAttribute("aria-label", "Toggle tree/list view");
-		this.viewModeBtn.addEventListener("mouseenter", (e) => this.showTooltip("Toggle tree/list view", e));
-		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
-		this.viewModeBtn.addEventListener("click", () => {
-			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
-			this.renderList();
-		});
-		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
-			this.query.sort = v as SortMode;
-			if (this.query.sort !== "manual") {
-				this.manualOrderEditing = false;
-			}
-			this.updateManualOrderControls();
-			this.updateViewModeControl();
-			this.renderList();
-		}, this.query.sort);
-		const row2 = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
-		this.filterRow = row2;
-		row2.classList.add("is-collapsed");
-
-		const filterToggleBtn = row1.createEl("button", {
-			cls: "smart-explorer-filter-toggle",
-		});
-		setIcon(filterToggleBtn, "sliders-horizontal");
-		filterToggleBtn.setAttribute("aria-label", "Show filters");
+		const filterRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
+		this.filterRow = filterRow;
+		filterRow.classList.add("is-collapsed");
 		filterToggleBtn.addEventListener("mouseenter", (e) => this.showTooltip("Show filters", e));
 		filterToggleBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		filterToggleBtn.addEventListener("click", () => {
-			row2.classList.toggle("is-collapsed");
-			filterToggleBtn.classList.toggle("is-active", !row2.classList.contains("is-collapsed"));
+			filterRow.classList.toggle("is-collapsed");
+			filterToggleBtn.classList.toggle(
+				"is-active",
+				this.hasActiveFilterControls() || !filterRow.classList.contains("is-collapsed"),
+			);
 		});
 
-		this.moreBtn = row1.createEl("button", {
-			cls: "smart-explorer-more",
-			text: "⋯",
-		});
-		this.moreBtn.setAttribute("aria-label", "More actions");
-		this.moreBtn.addEventListener("click", (e) => this.showToolbarMenu(e));
-
-		this.createSelect(row2, GROUP_OPTIONS, "smart-explorer-group", (v) => {
+		this.createSelect(filterRow, GROUP_OPTIONS, "smart-explorer-group", (v) => {
 			this.query.group = v as GroupMode;
 			this.renderList();
 		}, this.query.group);
 
-		this.createSelect(row2, FILE_KIND_OPTIONS, "smart-explorer-kind", (v) => {
+		this.createSelect(filterRow, FILE_KIND_OPTIONS, "smart-explorer-kind", (v) => {
 			this.query.fileKind = v as FileKind;
 			this.query.extension = null;
 			this.renderList();
 		}, this.query.fileKind);
 
 		this.createSelect(
-			row2,
+			filterRow,
 			MODIFIED_RANGE_OPTIONS.map((o) => ({ value: o.value, text: o.text })),
 			"smart-explorer-modified",
 			(v) => {
@@ -282,7 +316,14 @@ export class SmartExplorerView extends ItemView {
 			this.modifiedRangeValue(),
 		);
 
-		this.fileCountEl = toolbar.createDiv({ cls: "smart-explorer-file-count" });
+		const countRow = toolbar.createDiv({ cls: "smart-explorer-count-row" });
+		this.fileCountEl = countRow.createDiv({ cls: "smart-explorer-file-count" });
+		this.clearFiltersBtn = countRow.createEl("button", { cls: "smart-explorer-clear-filters is-hidden" });
+		setIcon(this.clearFiltersBtn, "x");
+		this.clearFiltersBtn.setAttribute("aria-label", "Clear search and filters");
+		this.clearFiltersBtn.addEventListener("mouseenter", (e) => this.showTooltip("Clear search and filters", e));
+		this.clearFiltersBtn.addEventListener("mouseleave", () => this.hideTooltip());
+		this.clearFiltersBtn.addEventListener("click", () => this.clearSearchAndFilters());
 
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
@@ -305,42 +346,30 @@ export class SmartExplorerView extends ItemView {
 		return select;
 	}
 
-	private showToolbarMenu(e: MouseEvent) {
-		const state = getToolbarMoreState(this.query.sort, this.manualOrderUndoStack.length > 0);
-		const menu = new Menu();
-		menu.addItem((item) =>
-			item
-				.setTitle(this.manualOrderEditing ? "Finish editing order" : "Edit manual order")
-				.setIcon("list-ordered")
-				.setDisabled(!state.canEditManualOrder)
-				.onClick(() => {
-					this.manualOrderEditing = !this.manualOrderEditing;
-					this.updateManualOrderControls();
-					this.renderList();
-				}),
-		);
-		menu.addItem((item) =>
-			item.setTitle("Undo manual reorder").setIcon("undo").setDisabled(!state.canUndoManualOrder).onClick(() => this.undoManualReorder()),
-		);
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item.setTitle("Reset filters").setIcon("filter-x").onClick(() => this.resetFilters()),
-		);
-		menu.showAtMouseEvent(e);
-	}
-
 	private rebuildView() {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.renderShell(container);
 		this.renderList();
 	}
 
-	private resetFilters() {
-		this.query.searchText = "";
-		this.query.extension = null;
-		this.query.fileKind = "all";
-		this.query.modifiedWithinDays = null;
+	private clearSearchAndFilters() {
+		this.query = clearSearchAndFilters(this.query);
 		this.rebuildView();
+	}
+
+	private toggleSearchRow(forceOpen?: boolean) {
+		if (!this.searchRow || !this.searchToggleBtn) return;
+		const shouldOpen = forceOpen ?? this.searchRow.classList.contains("is-collapsed");
+		this.searchRow.classList.toggle("is-collapsed", !shouldOpen);
+		this.searchToggleBtn.classList.toggle("is-active", shouldOpen || this.query.searchText.trim().length > 0);
+		if (shouldOpen) {
+			this.searchInput?.focus();
+			this.searchInput?.select();
+		}
+	}
+
+	private hasActiveFilterControls(): boolean {
+		return this.query.extension !== null || this.query.fileKind !== "all" || this.query.modifiedWithinDays !== null;
 	}
 
 	private modifiedRangeValue(): string {
@@ -352,10 +381,16 @@ export class SmartExplorerView extends ItemView {
 		return resolveExplorerViewMode(this.viewMode, this.query.sort);
 	}
 
+	private viewModeTooltip(): string {
+		if (this.query.sort === "manual") return "Manual sort uses list view";
+		return this.resolvedViewMode() === "tree" ? "Tree view" : "List view";
+	}
+
 	private registerKeyboardShortcuts(container: HTMLElement) {
 		container.onkeydown = (e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
 				e.preventDefault();
+				this.toggleSearchRow(true);
 				this.searchInput?.focus();
 				this.searchInput?.select();
 				return;
@@ -369,6 +404,12 @@ export class SmartExplorerView extends ItemView {
 					this.renderList();
 					return;
 				}
+				if (this.searchRow && !this.searchRow.classList.contains("is-collapsed")) {
+					e.preventDefault();
+					this.searchRow.classList.add("is-collapsed");
+					this.searchToggleBtn?.classList.toggle("is-active", this.query.searchText.trim().length > 0);
+					return;
+				}
 				if (this.filterRow && !this.filterRow.classList.contains("is-collapsed")) {
 					e.preventDefault();
 					this.filterRow.classList.add("is-collapsed");
@@ -379,16 +420,21 @@ export class SmartExplorerView extends ItemView {
 
 	private updateManualOrderControls() {
 		const isManualSort = this.query.sort === "manual";
-		this.moreBtn?.classList.toggle("is-active", isManualSort && this.manualOrderEditing);
+		if (this.manualUndoBtn) {
+			this.manualUndoBtn.classList.toggle("is-hidden", !isManualSort);
+			this.manualUndoBtn.disabled = !isManualSort || this.manualOrderUndoStack.length === 0;
+		}
 		if (this.listContainer) {
-			this.listContainer.classList.toggle("is-manual-editing", isManualSort && this.manualOrderEditing);
+			this.listContainer.classList.toggle("is-manual-sorting", isManualSort);
 		}
 	}
 
 	private updateViewModeControl() {
 		if (!this.viewModeBtn) return;
 		const mode = this.resolvedViewMode();
-		this.viewModeBtn.setText(mode === "tree" ? "▸" : "☰");
+		this.viewModeBtn.empty();
+		setIcon(this.viewModeBtn, mode === "tree" ? "folder-tree" : "list");
+		this.viewModeBtn.setAttribute("aria-label", this.viewModeTooltip());
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
 	}
@@ -432,18 +478,7 @@ export class SmartExplorerView extends ItemView {
 			empty.createSpan({ text: "No files match your filters." });
 			const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
 			clearBtn.addEventListener("click", () => {
-				this.query = {
-					searchText: "",
-					sort: this.query.sort,
-					group: this.query.group,
-					extension: null,
-					fileKind: "all",
-					modifiedWithinDays: null,
-				};
-				this.manualOrderEditing = false;
-				const container = this.containerEl.children[1] as HTMLElement;
-				this.renderShell(container);
-				this.renderList();
+				this.clearSearchAndFilters();
 			});
 			return;
 		}
@@ -480,7 +515,7 @@ export class SmartExplorerView extends ItemView {
 			}
 		}
 
-		if (isManualSort && this.manualOrderEditing && this.listContainer) {
+		if (isManualSort && this.listContainer) {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
@@ -488,26 +523,34 @@ export class SmartExplorerView extends ItemView {
 			});
 			this.dragSortManager.enable();
 
-			// Attach drag handlers to rendered rows
-			for (const section of sections) {
-				for (const record of section.records) {
-					const row = this.listContainer.querySelector<HTMLElement>(
-						`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
-					);
-					if (row) {
-						this.dragSortManager.attachRow(row, record.path, section.id);
-					}
-				}
-			}
+			this.attachManualDragRows(sections);
 
 			if (this.virtualList) {
-				this.virtualList.onAfterRender = () => this.dragSortManager?.reapplyDragClass();
+				this.virtualList.onAfterRender = () => {
+					this.attachManualDragRows(sections);
+					this.dragSortManager?.reapplyDragClass();
+				};
 			}
 		}
 
 		this.updateFileCount(displayed, records.length);
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
+	}
+
+	private attachManualDragRows(sections: { id: string; records: FileRecord[] }[]) {
+		if (!this.listContainer || !this.dragSortManager) return;
+		this.dragSortManager.clearRows();
+		for (const section of sections) {
+			for (const record of section.records) {
+				const row = this.listContainer.querySelector<HTMLElement>(
+					`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
+				);
+				if (!row) continue;
+				const handle = row.querySelector<HTMLElement>(".smart-explorer-row-drag-handle");
+				this.dragSortManager.attachRow(row, record.path, section.id, handle ?? row);
+			}
+		}
 	}
 
 	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
@@ -517,9 +560,12 @@ export class SmartExplorerView extends ItemView {
 			const summary = details.createEl("summary", { cls: "smart-explorer-tree-folder-summary" });
 			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
 			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
-			summary.createSpan({ cls: "smart-explorer-tree-folder-icon", text: "▣" });
+			const folderIcon = summary.createSpan({ cls: "smart-explorer-tree-folder-icon" });
+			setIcon(folderIcon, "folder");
 			summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
-			summary.createSpan({ cls: "smart-explorer-tree-count", text: String(countTreeFiles(node)) });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
+			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
+			summary.addEventListener("mouseleave", () => this.hideTooltip());
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			for (const child of node.children) {
 				children.appendChild(this.createTreeNodeElement(child));
@@ -541,8 +587,14 @@ export class SmartExplorerView extends ItemView {
 		if (record.path === this.selectedPath) {
 			row.classList.add("is-selected");
 		}
-		if (this.query.sort === "manual" && this.manualOrderEditing) {
-			row.classList.add("is-order-editable");
+		if (this.query.sort === "manual") {
+			const handle = row.createSpan({ cls: "smart-explorer-row-drag-handle" });
+			setIcon(handle, "grip-vertical");
+			handle.setAttribute("aria-label", "Drag to reorder");
+			handle.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			});
 		}
 		row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
@@ -598,6 +650,16 @@ export class SmartExplorerView extends ItemView {
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
 		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+		const hasFilters = hasActiveSearchOrFilters(this.query);
+		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasFilters);
+		this.searchToggleBtn?.classList.toggle(
+			"is-active",
+			this.query.searchText.trim().length > 0 || !(this.searchRow?.classList.contains("is-collapsed") ?? true),
+		);
+		this.filterToggleBtn?.classList.toggle(
+			"is-active",
+			this.hasActiveFilterControls() || !(this.filterRow?.classList.contains("is-collapsed") ?? true),
+		);
 	}
 
 	private formatDate(ts: number): string {
@@ -651,7 +713,6 @@ export class SmartExplorerView extends ItemView {
 		sections: { id: string; records: FileRecord[] }[],
 		sectionId?: string,
 	) {
-		if (!this.manualOrderEditing) return;
 		const order = this.plugin.settings.manualOrder;
 		const nextOrder = reorderManualOrder(
 			order,
