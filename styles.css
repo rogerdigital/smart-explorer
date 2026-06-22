@@ -90,16 +90,13 @@
 	flex: 1 1 72px;
 }
 
-.smart-explorer-group {
-	display: none;
-}
-
 .smart-explorer-filter-toggle {
 	flex-shrink: 0;
 }
 
 .smart-explorer-manual-undo.is-hidden,
-.smart-explorer-clear-filters.is-hidden {
+.smart-explorer-clear-filters.is-hidden,
+.smart-explorer-group.is-hidden {
 	display: none;
 }
 

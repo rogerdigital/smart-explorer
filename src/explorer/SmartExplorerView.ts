@@ -11,6 +11,7 @@ import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerViewMode } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
+import { shouldOpenTreeFolder } from "./treeExpansion";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -59,7 +60,9 @@ export class SmartExplorerView extends ItemView {
 	private searchToggleBtn: HTMLButtonElement | null = null;
 	private filterRow: HTMLElement | null = null;
 	private filterToggleBtn: HTMLButtonElement | null = null;
+	private groupSelect: HTMLSelectElement | null = null;
 	private selectedPath: string | null = null;
+	private treeExpandedPaths: Set<string> = new Set();
 	private virtualList: VirtualList | null = null;
 	private searchTimeout: number | null = null;
 	private rebuildTimeout: number | null = null;
@@ -146,6 +149,7 @@ export class SmartExplorerView extends ItemView {
 		this.searchToggleBtn = null;
 		this.filterRow = null;
 		this.filterToggleBtn = null;
+		this.groupSelect = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -297,6 +301,7 @@ export class SmartExplorerView extends ItemView {
 			this.query.group = v as GroupMode;
 			this.renderList();
 		}, this.query.group);
+		this.groupSelect = filterRow.querySelector(".smart-explorer-group");
 
 		this.createSelect(filterRow, FILE_KIND_OPTIONS, "smart-explorer-kind", (v) => {
 			this.query.fileKind = v as FileKind;
@@ -437,6 +442,7 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.setAttribute("aria-label", this.viewModeTooltip());
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
+		this.groupSelect?.classList.toggle("is-hidden", mode === "tree");
 	}
 
 	private renderList() {
@@ -485,6 +491,7 @@ export class SmartExplorerView extends ItemView {
 
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 		if (this.resolvedViewMode() === "tree") {
+			this.syncSelectedPathFromActiveFile();
 			const tree = buildTree(records, this.query, this.manualOrderIndex);
 			for (const node of tree.children) {
 				this.listContainer.appendChild(this.createTreeNodeElement(node));
@@ -556,7 +563,18 @@ export class SmartExplorerView extends ItemView {
 	private createTreeNodeElement(node: ExplorerTreeNode): HTMLElement {
 		if (node.type === "folder") {
 			const details = createEl("details", { cls: "smart-explorer-tree-folder" });
-			details.open = true;
+			details.open = shouldOpenTreeFolder(node.path, {
+				expandedPaths: this.treeExpandedPaths,
+				hasActiveFilters: hasActiveSearchOrFilters(this.query),
+				selectedPath: this.selectedPath,
+			});
+			details.addEventListener("toggle", () => {
+				if (details.open) {
+					this.treeExpandedPaths.add(node.path);
+				} else {
+					this.treeExpandedPaths.delete(node.path);
+				}
+			});
 			const summary = details.createEl("summary", { cls: "smart-explorer-tree-folder-summary" });
 			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
 			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
@@ -660,6 +678,13 @@ export class SmartExplorerView extends ItemView {
 			"is-active",
 			this.hasActiveFilterControls() || !(this.filterRow?.classList.contains("is-collapsed") ?? true),
 		);
+	}
+
+	private syncSelectedPathFromActiveFile() {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (activeFile) {
+			this.selectedPath = activeFile.path;
+		}
 	}
 
 	private formatDate(ts: number): string {

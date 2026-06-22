@@ -59,6 +59,12 @@ describe("normalizeFileRecord", () => {
 		expect(record.parentPath).toBe("");
 	});
 
+	it("normalizes the Obsidian root folder path", () => {
+		const file = mockTFile({ path: "Home.md", parent: { path: "/" } });
+		const record = normalizeFileRecord(file, null);
+		expect(record.parentPath).toBe("");
+	});
+
 	it("extracts metadata from cache for markdown files", () => {
 		const file = mockTFile({ path: "notes/tagged.md" });
 		const mockCache: any = {
