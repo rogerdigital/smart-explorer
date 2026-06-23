@@ -505,6 +505,15 @@ body.is-tablet .smart-explorer-clear-btn:active {
 	white-space: nowrap;
 }
 
+.smart-explorer-manual-hint {
+	font-size: var(--font-ui-smallest);
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 4px 8px;
+	margin: 2px 0;
+}
+
 .smart-explorer-row[draggable="true"] {
 	cursor: grab;
 }

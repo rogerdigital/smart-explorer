@@ -6,10 +6,10 @@ import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
-import { reorderManualOrder } from "./manualOrder";
+import { reconcileManualOrder, reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
-import { resolveExplorerViewMode } from "./viewMode";
+import { resolveExplorerGroupMode, resolveExplorerViewMode, resolveManualSeedSort } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion";
 import { appendMarkdownExtension, buildCreationPath, buildFileRenamePath, buildSiblingPath, getParentFolderPath, getPathName, resolveCreationFolder } from "./creationPath";
@@ -18,7 +18,7 @@ import { isTouchMovePastThreshold, TOUCH_LONG_PRESS_MS } from "./touchLongPress"
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
-import { GROUP_OPTIONS } from "../settings/settings-helpers";
+import { GROUP_OPTIONS, SORT_OPTIONS } from "../settings/settings-helpers";
 
 const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null }[] = [
 	{ value: "all", text: "Any time", days: null },
@@ -87,12 +87,18 @@ export class SmartExplorerView extends ItemView {
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
 	private inlineEdit: InlineEditState | null = null;
+	// Seed sort for the current manual-sort session: the sort the user was
+	// viewing right before switching into manual. Used to initialize the order
+	// on first entry and as the fallback order for files added during the session.
+	private manualSeedSort: Exclude<SortMode, "manual"> = "name-asc";
+	private manualHintEl: HTMLElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
 		const settings = this.plugin.settings;
+		this.manualSeedSort = settings.defaultSort === "manual" ? "name-asc" : settings.defaultSort;
 		this.query = {
 			searchText: "",
 			sort: settings.defaultSort,
@@ -172,6 +178,7 @@ export class SmartExplorerView extends ItemView {
 		this.filterToggleBtn = null;
 		this.groupSelect = null;
 		this.inlineEdit = null;
+		this.manualHintEl = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
@@ -262,7 +269,13 @@ export class SmartExplorerView extends ItemView {
 			this.renderList();
 		});
 		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", (v) => {
-			this.query.sort = v as SortMode;
+			const nextSort = v as SortMode;
+			this.manualSeedSort = resolveManualSeedSort(this.query.sort, nextSort, this.manualSeedSort);
+			this.query.sort = nextSort;
+			if (this.query.sort === "manual") {
+				this.query.group = "none";
+				if (this.groupSelect) this.groupSelect.value = "none";
+			}
 			this.updateManualOrderControls();
 			this.updateViewModeControl();
 			this.renderList();
@@ -327,6 +340,7 @@ export class SmartExplorerView extends ItemView {
 		});
 
 		this.createSelect(filterRow, GROUP_OPTIONS, "smart-explorer-group", (v) => {
+			if (this.query.sort === "manual") return;
 			this.query.group = v as GroupMode;
 			this.renderList();
 		}, this.query.group);
@@ -392,6 +406,8 @@ export class SmartExplorerView extends ItemView {
 		const countMeta = countRow.createDiv({ cls: "smart-explorer-count-meta" });
 		this.fileCountEl = countMeta.createDiv({ cls: "smart-explorer-file-count" });
 
+		this.manualHintEl = toolbar.createDiv({ cls: "smart-explorer-manual-hint is-hidden" });
+
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
 		this.registerKeyboardShortcuts(container);
@@ -452,6 +468,10 @@ export class SmartExplorerView extends ItemView {
 		return resolveExplorerViewMode(this.viewMode, this.query.sort);
 	}
 
+	private resolvedGroupMode(): GroupMode {
+		return resolveExplorerGroupMode(this.query.group, this.query.sort);
+	}
+
 	private viewModeTooltip(): string {
 		if (this.query.sort === "manual") return "Manual sort uses list view";
 		return this.resolvedViewMode() === "tree" ? "Tree view" : "List view";
@@ -498,6 +518,15 @@ export class SmartExplorerView extends ItemView {
 		if (this.listContainer) {
 			this.listContainer.classList.toggle("is-manual-sorting", isManualSort);
 		}
+		if (this.manualHintEl) {
+			if (isManualSort) {
+				const seedLabel = SORT_OPTIONS.find((o) => o.value === this.manualSeedSort)?.text ?? "A-Z";
+				this.manualHintEl.setText(`Manual order, starting from ${seedLabel}. Drag rows to reorder.`);
+				this.manualHintEl.classList.remove("is-hidden");
+			} else {
+				this.manualHintEl.classList.add("is-hidden");
+			}
+		}
 	}
 
 	private updateViewModeControl() {
@@ -508,7 +537,11 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.setAttribute("aria-label", this.viewModeTooltip());
 		this.viewModeBtn.classList.toggle("is-active", mode === "tree");
 		this.viewModeBtn.disabled = this.query.sort === "manual";
-		this.groupSelect?.classList.toggle("is-hidden", mode === "tree");
+		if (this.groupSelect) {
+			this.groupSelect.value = this.resolvedGroupMode();
+			this.groupSelect.disabled = this.query.sort === "manual";
+			this.groupSelect.classList.toggle("is-hidden", mode === "tree" || this.query.sort === "manual");
+		}
 		this.updateTreeToggleControl();
 		this.collapseTreeBtn?.classList.toggle("is-hidden", mode !== "tree");
 		this.revealActiveFileBtn?.classList.toggle("is-hidden", mode !== "tree");
@@ -551,7 +584,8 @@ export class SmartExplorerView extends ItemView {
 			this.initializeManualOrder(records);
 		}
 
-		const sections = buildSections(records, this.query, this.manualOrderIndex);
+		const effectiveQuery = { ...this.query, group: this.resolvedGroupMode() };
+		const sections = buildSections(records, effectiveQuery, this.manualOrderIndex);
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
 		if (mode === "tree") {
@@ -560,7 +594,7 @@ export class SmartExplorerView extends ItemView {
 				return;
 			}
 			this.syncSelectedPathFromActiveFile();
-			const tree = buildTree(records, this.query, this.manualOrderIndex, folderPaths);
+			const tree = buildTree(records, effectiveQuery, this.manualOrderIndex, folderPaths);
 			this.visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
 			const rootCreateEl = this.createInlineCreateElement("", 0);
 			if (rootCreateEl) {
@@ -586,8 +620,8 @@ export class SmartExplorerView extends ItemView {
 			this.listContainer.appendChild(rootCreateEl);
 		}
 
-		const useVirtual = this.query.group === "none" && VirtualList.shouldVirtualize(displayed);
 		const isManualSort = this.query.sort === "manual";
+		const useVirtual = !isManualSort && effectiveQuery.group === "none" && VirtualList.shouldVirtualize(displayed);
 
 		if (useVirtual) {
 			const allRecords = sections[0]!.records;
@@ -596,7 +630,7 @@ export class SmartExplorerView extends ItemView {
 		} else {
 			for (const section of sections) {
 				if (section.records.length === 0) continue;
-				if (this.query.group !== "none") {
+				if (effectiveQuery.group !== "none") {
 					const header = this.listContainer.createDiv({ cls: "smart-explorer-section-header" });
 					header.setText(`${section.title} (${section.records.length})`);
 				}
@@ -610,7 +644,7 @@ export class SmartExplorerView extends ItemView {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
-				onReorder: (path, toIndex, sectionId) => this.handleManualReorder(path, toIndex, sections, sectionId),
+				onReorder: (path, toIndex, sectionId) => this.handleManualReorder(path, toIndex, sections, effectiveQuery.group, sectionId),
 			});
 			this.dragSortManager.enable();
 
@@ -1161,16 +1195,15 @@ export class SmartExplorerView extends ItemView {
 
 	private initializeManualOrder(records: FileRecord[]) {
 		const order = this.plugin.settings.manualOrder;
-		if (order.length === 0) {
-			const currentSorted = buildSections(records, {
-				...this.query,
-				sort: this.plugin.settings.defaultSort === "manual" ? "name-asc" : this.plugin.settings.defaultSort,
-			});
-			for (const section of currentSorted) {
-				for (const r of section.records) {
-					order.push(r.path);
-				}
-			}
+		const seeded = buildSections(records, {
+			...this.query,
+			sort: this.manualSeedSort,
+			group: this.resolvedGroupMode(),
+		});
+		const fallbackOrder = seeded.flatMap((s) => s.records.map((r) => r.path));
+		const reconciled = reconcileManualOrder(order, records, fallbackOrder);
+		if (reconciled !== order) {
+			this.plugin.settings.manualOrder = reconciled;
 			this.scheduleSaveOrder();
 		}
 		this.buildManualOrderIndex();
@@ -1180,6 +1213,7 @@ export class SmartExplorerView extends ItemView {
 		draggedPath: string,
 		toIndex: number,
 		sections: { id: string; records: FileRecord[] }[],
+		group: GroupMode = this.resolvedGroupMode(),
 		sectionId?: string,
 	) {
 		const order = this.plugin.settings.manualOrder;
@@ -1188,7 +1222,7 @@ export class SmartExplorerView extends ItemView {
 			draggedPath,
 			toIndex,
 			sections,
-			this.query.group,
+			group,
 			sectionId,
 		);
 		if (nextOrder.join("\n") === order.join("\n")) return;
