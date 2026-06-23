@@ -3,7 +3,7 @@
 Obsidian plugin — alternative side-pane file explorer with tree/list browsing, sorting, grouping, filtering, and manual order.
 
 - Plugin ID: `smart-explorer`
-- Current version: `0.3.3`
+- Current version: `0.5.0`
 - Min Obsidian version: `1.7.2`
 
 ## Commands
@@ -28,7 +28,8 @@ src/explorer/FileTreeModel.ts       Orchestrates filter → sort → group pipel
 src/explorer/TreeModel.ts           Builds folder-tree nodes for tree mode
 src/explorer/VirtualList.ts         Virtual scrolling list component
 src/explorer/DragSortManager.ts     Manual drag-and-drop sorting
-src/explorer/manualOrder.ts         Pure manual-order reorder operations
+src/explorer/dropIndex.ts           Pure drop-index calculation from row bounds
+src/explorer/manualOrder.ts         Pure manual-order reorder + reconcile operations
 src/explorer/sorters.ts             Pure sorting functions (8 modes, path tie-breaker)
 src/explorer/groupers.ts            Pure grouping functions (5 modes: none, folder, extension, modified-month, top-folder)
 src/explorer/filters.ts             Pure filter functions (search, extension, file kind, date range)
@@ -36,7 +37,10 @@ src/explorer/filterState.ts         Clear/detect active search and filters
 src/explorer/fileRow.ts             File row display formatting helpers
 src/explorer/creationPath.ts        Pure helpers for new note/folder target paths
 src/explorer/treeFolderInfo.ts      Tree folder hover metadata helpers
-src/explorer/viewMode.ts            Resolves effective tree/list mode, including Manual sort forcing list mode
+src/explorer/treeExpansion.ts       Pure tree folder expand/collapse state helpers
+src/explorer/revealPath.ts          Pure path-reveal helpers for active file / search results
+src/explorer/touchLongPress.ts      Pure touch long-press threshold helpers
+src/explorer/viewMode.ts            Resolves effective tree/list mode + manual seed sort
 
 src/settings/settings.ts            Settings type + defaults
 src/settings/settings-tab.ts        PluginSettingTab UI
