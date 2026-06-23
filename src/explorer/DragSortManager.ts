@@ -1,4 +1,5 @@
 import { Platform } from "obsidian";
+import { calculateDropIndexFromRowBounds } from "./dropIndex";
 
 export type DragSortOptions = {
 	getRowHeight: () => number;
@@ -19,6 +20,9 @@ export class DragSortManager {
 	private draggedRow: HTMLElement | null = null;
 	private autoScrollTimer: number | null = null;
 	private rows: { el: HTMLElement; path: string; sectionId?: string }[] = [];
+	private currentDropIndex: number | null = null;
+	private currentDropSectionId: string | undefined;
+	private lastClientY: number | null = null;
 
 	// Mobile touch state
 	private longPressTimer: number | null = null;
@@ -164,10 +168,9 @@ export class DragSortManager {
 	}
 
 	private finishTouchDrag() {
-		const dropIndex = this.getDropIndex(this.ghost ? parseFloat(this.ghost.style.top) + 20 : 0);
-		const sectionId = this.getSectionAtIndex(dropIndex);
-		if (this.draggedPath != null && dropIndex >= 0) {
-			this.opts.onReorder(this.draggedPath, dropIndex, sectionId);
+		const dropIndex = this.currentDropIndex;
+		if (this.draggedPath != null && dropIndex != null && dropIndex >= 0) {
+			this.opts.onReorder(this.draggedPath, dropIndex, this.currentDropSectionId);
 		}
 		this.cancelTouchDrag();
 	}
@@ -202,9 +205,10 @@ export class DragSortManager {
 	private handleDrop = (e: DragEvent) => {
 		e.preventDefault();
 		if (!this.draggedPath) return;
-		const dropIndex = this.getDropIndexFromClientY(e.clientY);
-		const sectionId = this.getSectionAtIndex(dropIndex);
-		this.opts.onReorder(this.draggedPath, dropIndex, sectionId);
+		const dropIndex = this.currentDropIndex;
+		if (dropIndex != null) {
+			this.opts.onReorder(this.draggedPath, dropIndex, this.currentDropSectionId);
+		}
 		this.cleanup();
 	};
 
@@ -220,11 +224,27 @@ export class DragSortManager {
 	};
 
 	private updateIndicatorFromClientY(clientY: number) {
+		this.lastClientY = clientY;
 		const dropIndex = this.getDropIndexFromClientY(clientY);
+		this.currentDropIndex = dropIndex;
+		this.currentDropSectionId = this.getSectionAtIndex(dropIndex);
 		this.showIndicatorAtIndex(dropIndex);
 	}
 
 	private getDropIndexFromClientY(clientY: number): number {
+		if (!this.isVirtualMode()) {
+			return calculateDropIndexFromRowBounds(
+				clientY,
+				this.rows.map((row) => {
+					const rect = row.el.getBoundingClientRect();
+					return {
+						top: rect.top,
+						bottom: rect.bottom,
+					};
+				}),
+			);
+		}
+
 		const rect = this.container.getBoundingClientRect();
 		const y = clientY - rect.top + this.container.scrollTop;
 		return this.getDropIndex(y);
@@ -241,24 +261,13 @@ export class DragSortManager {
 			return Math.max(0, Math.min(totalRows, idx));
 		}
 
-		// For grouped mode, find closest row boundary
-		let closestIdx = 0;
-		let closestDist = Infinity;
-		for (let i = 0; i < this.rows.length; i++) {
-			const rowTop = this.rows[i]!.el.offsetTop;
-			const dist = Math.abs(scrollY - rowTop);
-			if (dist < closestDist) {
-				closestDist = dist;
-				closestIdx = i;
-			}
-		}
-		// Check if closer to bottom of last row
-		const lastRow = this.rows[this.rows.length - 1]!.el;
-		const bottomDist = Math.abs(scrollY - (lastRow.offsetTop + lastRow.offsetHeight));
-		if (bottomDist < closestDist) {
-			return this.rows.length;
-		}
-		return closestIdx;
+		return calculateDropIndexFromRowBounds(
+			scrollY,
+			this.rows.map((row) => ({
+				top: row.el.offsetTop,
+				bottom: row.el.offsetTop + row.el.offsetHeight,
+			})),
+		);
 	}
 
 	private showIndicatorAtIndex(index: number) {
@@ -310,6 +319,9 @@ export class DragSortManager {
 		if (this.autoScrollTimer) return;
 		this.autoScrollTimer = window.setInterval(() => {
 			this.container.scrollTop += delta;
+			if (this.lastClientY != null) {
+				this.updateIndicatorFromClientY(this.lastClientY);
+			}
 		}, 16);
 	}
 
@@ -326,6 +338,9 @@ export class DragSortManager {
 		}
 		this.draggedPath = null;
 		this.draggedRow = null;
+		this.currentDropIndex = null;
+		this.currentDropSectionId = undefined;
+		this.lastClientY = null;
 		this.hideIndicator();
 		this.stopAutoScroll();
 	}
