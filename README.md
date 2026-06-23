@@ -11,16 +11,18 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 | Category | Options |
 |----------|---------|
 | **Browse** | Folder tree by default, with folder counts and compact hover details |
-| **Create** | Create notes and folders from the toolbar, folder menu, or empty list area |
+| **Create** | Create notes and folders via toolbar, context menu, or command palette — with inline name editing |
+| **Edit** | Rename files inline; extensions stay fixed so only the name changes |
 | **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual drag order |
 | **Filter** | Search by name/path, file kind (all / markdown / attachments / images), date range (1d / 7d / 30d) |
 | **View** | Tree/list toggle; Manual sort automatically uses list mode for direct drag-and-drop |
+| **Commands** | Open, focus search, reveal active file, new note, new folder — all in the Command Palette |
 | **Keyboard** | Focus search, clear search, move through rows, and open selected files |
 | **Settings** | Default sort/group mode, hidden extensions, reset manual order |
 
 ### Manual Drag-and-Drop Sorting
 
-Switch to **Manual** sort mode, then drag the handle beside a file to reorder it. Use **Undo** to revert the last reorder. The custom order is saved per vault and persists across sessions. Works on both desktop and mobile.
+Switch to **Manual** sort mode to drag the handle beside a file and reorder it. The starting order matches whatever sort you were viewing ("what you see is what you drag"), shown in a toolbar hint. Use **Undo** to revert the last reorder. The custom order is saved per vault, keeps new files draggable, and persists across sessions. Works on both desktop and mobile.
 
 ## Installation
 
@@ -46,12 +48,13 @@ Switch to **Manual** sort mode, then drag the handle beside a file to reorder it
 5. Use the clear button near the file count to clear active search and filters
 6. Defaults persist in **Settings → Community Plugins → Smart Explorer**
 
-### Keyboard
+### Keyboard & Commands
 
 - `Cmd/Ctrl+F` focuses the search box
 - `Esc` clears search text or closes the filter row
 - `Arrow Up/Down` moves through file rows
 - `Enter` opens the focused file
+- Command Palette actions: **Smart Explorer: Open**, **Focus search**, **Reveal active file**, **New note**, **New folder**
 
 ## Compatibility
 
