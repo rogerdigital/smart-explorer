@@ -447,6 +447,22 @@ body.is-tablet .smart-explorer-row {
 	-webkit-tap-highlight-color: transparent;
 }
 
+body.is-phone .smart-explorer-tree-folder-summary,
+body.is-tablet .smart-explorer-tree-folder-summary {
+	min-height: 44px;
+	padding-top: 8px;
+	padding-bottom: 8px;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body.is-phone .smart-explorer-inline-input,
+body.is-tablet .smart-explorer-inline-input {
+	min-height: 36px;
+	padding: 6px 8px;
+}
+
 body.is-phone .smart-explorer-row-drag-handle,
 body.is-tablet .smart-explorer-row-drag-handle {
 	flex: 0 0 36px;

@@ -14,6 +14,7 @@ import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
 import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion";
 import { appendMarkdownExtension, buildCreationPath, buildFileRenamePath, buildSiblingPath, getParentFolderPath, getPathName, resolveCreationFolder } from "./creationPath";
 import { revealPathInContainer } from "./revealPath";
+import { isTouchMovePastThreshold, TOUCH_LONG_PRESS_MS } from "./touchLongPress";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -777,6 +778,12 @@ export class SmartExplorerView extends ItemView {
 				this.highlightSelected();
 				this.showFolderContextMenu(e, node.path);
 			});
+			this.attachLongPressMenu(summary, ({ x, y }) => {
+				this.selectedFolderPath = node.path;
+				this.selectedPath = null;
+				this.highlightSelected();
+				this.buildFolderContextMenu(node.path).showAtPosition({ x, y });
+			});
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			const inlineCreateEl = this.createInlineCreateElement(node.path, node.depth + 1);
 			if (inlineCreateEl) {
@@ -848,6 +855,9 @@ export class SmartExplorerView extends ItemView {
 		row.addEventListener("contextmenu", (e) => {
 			e.preventDefault();
 			this.showContextMenu(e, record);
+		});
+		this.attachLongPressMenu(row, ({ x, y }) => {
+			this.buildFileContextMenu(record).showAtPosition({ x, y });
 		});
 
 		if (this.query.sort !== "manual") {
@@ -1220,7 +1230,65 @@ export class SmartExplorerView extends ItemView {
 		}, 500);
 	}
 
+	private attachLongPressMenu(element: HTMLElement, onOpen: (position: { x: number; y: number }) => void) {
+		if (!Platform.isMobile) return;
+		let timer: number | null = null;
+		let startX = 0;
+		let startY = 0;
+		let didOpen = false;
+
+		const clearTimer = () => {
+			if (timer) {
+				window.clearTimeout(timer);
+				timer = null;
+			}
+		};
+
+		element.addEventListener("touchstart", (e) => {
+			const target = e.target as HTMLElement | null;
+			if (target?.closest(".smart-explorer-row-drag-handle")) return;
+			const touch = e.touches[0];
+			if (!touch) return;
+			startX = touch.clientX;
+			startY = touch.clientY;
+			didOpen = false;
+			timer = window.setTimeout(() => {
+				timer = null;
+				didOpen = true;
+				navigator.vibrate?.(30);
+				onOpen({ x: startX, y: startY });
+			}, TOUCH_LONG_PRESS_MS);
+		}, { passive: true });
+
+		element.addEventListener("touchmove", (e) => {
+			if (!timer) return;
+			const touch = e.touches[0];
+			if (!touch) return;
+			if (isTouchMovePastThreshold(startX, startY, touch.clientX, touch.clientY)) {
+				clearTimer();
+			}
+		}, { passive: true });
+
+		element.addEventListener("touchend", (e) => {
+			clearTimer();
+			if (didOpen) {
+				e.preventDefault();
+				e.stopPropagation();
+				didOpen = false;
+			}
+		});
+
+		element.addEventListener("touchcancel", () => {
+			clearTimer();
+			didOpen = false;
+		});
+	}
+
 	private showContextMenu(e: MouseEvent, record: FileRecord) {
+		this.buildFileContextMenu(record).showAtMouseEvent(e);
+	}
+
+	private buildFileContextMenu(record: FileRecord): Menu {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item.setTitle("Open in new tab").setIcon("file-plus").onClick(() => {
@@ -1266,10 +1334,14 @@ export class SmartExplorerView extends ItemView {
 				void this.deleteItem(record.path);
 			}),
 		);
-		menu.showAtMouseEvent(e);
+		return menu;
 	}
 
 	private showFolderContextMenu(e: MouseEvent, folderPath: string) {
+		this.buildFolderContextMenu(folderPath).showAtMouseEvent(e);
+	}
+
+	private buildFolderContextMenu(folderPath: string): Menu {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item.setTitle("New note").setIcon("file-plus").onClick(() => {
@@ -1304,7 +1376,7 @@ export class SmartExplorerView extends ItemView {
 				void this.deleteItem(folderPath);
 			}),
 		);
-		menu.showAtMouseEvent(e);
+		return menu;
 	}
 
 	private showBlankContextMenu(e: MouseEvent) {
