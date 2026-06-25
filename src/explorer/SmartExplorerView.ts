@@ -46,8 +46,6 @@ const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
 	{ value: "manual", text: "Manual" },
 ];
 
-const LIST_WHEEL_SCROLL_MULTIPLIER = 0.45;
-
 type InlineEditState =
 	| { kind: "create-note"; folderPath: string; value: string }
 	| { kind: "create-folder"; folderPath: string; value: string }
@@ -142,7 +140,6 @@ export class SmartExplorerView extends ItemView {
 
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
-		this.listContainer.addEventListener("wheel", (e) => this.handleListWheel(e), { passive: false });
 		this.listContainer.addEventListener("contextmenu", (e) => this.showBlankContextMenu(e));
 	}
 
@@ -246,13 +243,6 @@ export class SmartExplorerView extends ItemView {
 		this.rebuildTimeout = window.setTimeout(() => {
 			this.renderList();
 		}, 300);
-	}
-
-	private handleListWheel(e: WheelEvent) {
-		if (!this.listContainer || e.ctrlKey) return;
-		e.preventDefault();
-		this.listContainer.scrollTop += e.deltaY * LIST_WHEEL_SCROLL_MULTIPLIER;
-		this.listContainer.scrollLeft += e.deltaX * LIST_WHEEL_SCROLL_MULTIPLIER;
 	}
 
 	private renderToolbar(container: HTMLElement) {
@@ -549,6 +539,26 @@ export class SmartExplorerView extends ItemView {
 
 	private renderList() {
 		if (!this.listContainer) return;
+		// Preserve the scroll position across the full re-render. The container
+		// is emptied and rebuilt below; scrollTop must be restored *after* the
+		// new content exists (setting it on an empty container gets clamped to
+		// 0). The finally block guarantees restoration on every return path,
+		// including rename start/commit/cancel and background vault-event
+		// rebuilds, so the list never jumps to the top or to a selected row.
+		const preservedScrollTop = this.listContainer.scrollTop;
+		try {
+			this.renderListContent();
+		} finally {
+			if (this.virtualList) {
+				this.virtualList.scrollTo(preservedScrollTop);
+			} else if (this.listContainer) {
+				this.listContainer.scrollTop = preservedScrollTop;
+			}
+		}
+	}
+
+	private renderListContent() {
+		if (!this.listContainer) return;
 		if (this.virtualList) {
 			this.virtualList.destroy();
 			this.virtualList = null;
@@ -649,13 +659,6 @@ export class SmartExplorerView extends ItemView {
 			this.dragSortManager.enable();
 
 			this.attachManualDragRows(sections);
-
-			if (this.virtualList) {
-				this.virtualList.onAfterRender = () => {
-					this.attachManualDragRows(sections);
-					this.dragSortManager?.reapplyDragClass();
-				};
-			}
 		}
 
 		this.updateFileCount(displayed, records.length);
@@ -740,7 +743,10 @@ export class SmartExplorerView extends ItemView {
 			if (!handled) this.cancelInlineEdit();
 		});
 		window.setTimeout(() => {
-			input.focus();
+			// preventScroll keeps focus from scrolling the just-restored list
+			// position away (e.g. when entering inline rename/edit) — the row
+			// is already in view since the list preserved its scrollTop.
+			input.focus({ preventScroll: true });
 			input.select();
 		}, 0);
 		return input;
@@ -1232,9 +1238,7 @@ export class SmartExplorerView extends ItemView {
 		}
 		this.plugin.settings.manualOrder = nextOrder;
 		this.buildManualOrderIndex();
-		const scrollTop = this.listContainer?.scrollTop ?? 0;
 		this.renderList();
-		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
 		this.scheduleSaveOrder();
 		this.updateManualOrderControls();
 	}
@@ -1245,9 +1249,7 @@ export class SmartExplorerView extends ItemView {
 		if (!previousOrder) return;
 		this.plugin.settings.manualOrder = previousOrder;
 		this.buildManualOrderIndex();
-		const scrollTop = this.listContainer?.scrollTop ?? 0;
 		this.renderList();
-		if (this.listContainer) this.listContainer.scrollTop = scrollTop;
 		this.scheduleSaveOrder();
 		this.updateManualOrderControls();
 	}
