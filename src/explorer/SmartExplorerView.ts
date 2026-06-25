@@ -178,7 +178,14 @@ export class SmartExplorerView extends ItemView {
 		this.manualHintEl = null;
 		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
-		if (this.saveOrderTimeout) window.clearTimeout(this.saveOrderTimeout);
+		// Flush a pending manual-order save before the view goes away; the
+		// debounced 500ms save could otherwise be dropped, losing the user's
+		// most recent reorder if they close the leaf quickly.
+		if (this.saveOrderTimeout) {
+			window.clearTimeout(this.saveOrderTimeout);
+			this.saveOrderTimeout = null;
+			void this.plugin.saveSettings();
+		}
 	}
 
 	private registerVaultEvents() {
@@ -187,11 +194,10 @@ export class SmartExplorerView extends ItemView {
 		this.registerEvent(events.on("create", (file) => {
 			if (file instanceof TFile) {
 				this.fileIndex.addFile(file);
-				const order = this.plugin.settings.manualOrder;
-				if (order.length > 0 && !order.includes(file.path)) {
-					order.push(file.path);
-					this.buildManualOrderIndex();
-				}
+				// New files are intentionally NOT appended to manualOrder here:
+				// initializeManualOrder's reconcile places them at the correct
+				// seed-sorted position, which keeps ordering consistent regardless
+				// of when files are created.
 			}
 			this.scheduleRebuild();
 		}));
@@ -767,6 +773,13 @@ export class SmartExplorerView extends ItemView {
 		if (!state) return;
 		if (!value) {
 			new Notice("Name cannot be empty.");
+			return;
+		}
+		// Reject path separators and parent-directory segments so a typed (or
+		// pasted) name can't silently create deeply nested paths or escape the
+		// target folder.
+		if (value.includes("/") || value.includes("\\") || value.includes("..")) {
+			new Notice("Name cannot contain path separators or \"..\".");
 			return;
 		}
 
