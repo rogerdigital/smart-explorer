@@ -1,7 +1,7 @@
 {
 	"id": "smart-explorer",
 	"name": "Smart Explorer",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"minAppVersion": "1.7.2",
 	"description": "Browse, sort, group, filter, and manually order vault files from a tree-first side-pane explorer.",
 	"author": "Roger Deng",

@@ -1,6 +1,6 @@
 {
 	"name": "smart-explorer",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"description": "A tree-first Obsidian file explorer with sorting, grouping, filtering, and manual ordering.",
 	"main": "main.js",
 	"type": "module",
