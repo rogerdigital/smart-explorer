@@ -87,6 +87,35 @@ export class FileIndex {
 		this.records.delete(path);
 	}
 
+	// Rewrite every record whose path lives at or under oldFolder to its new
+	// location after a folder rename/move. Obsidian only emits a single rename
+	// event for the folder itself (not for each child), so the index must be
+	// patched here or its child records become stale.
+	renameFolder(oldFolder: string, newFolder: string): void {
+		if (oldFolder === newFolder) return;
+		const oldPrefix = `${oldFolder}/`;
+		const oldPrefixLen = oldPrefix.length;
+		const rewritten: Array<[string, FileRecord]> = [];
+		for (const [path, record] of this.records) {
+			let newPath: string | null = null;
+			if (path === oldFolder) {
+				newPath = newFolder;
+			} else if (path.startsWith(oldPrefix)) {
+				newPath = `${newFolder}/${path.slice(oldPrefixLen)}`;
+			}
+			if (newPath === null) continue;
+			this.records.delete(path);
+			// Derive the new parent path from the renamed location.
+			const parentPath = newPath.includes("/")
+				? newPath.slice(0, newPath.lastIndexOf("/"))
+				: "";
+			rewritten.push([newPath, { ...record, path: newPath, parentPath }]);
+		}
+		for (const [path, record] of rewritten) {
+			this.records.set(path, record);
+		}
+	}
+
 	getExtensions(): string[] {
 		const exts = new Set<string>();
 		for (const record of this.records.values()) {

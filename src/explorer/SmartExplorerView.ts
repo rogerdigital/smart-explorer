@@ -226,6 +226,15 @@ export class SmartExplorerView extends ItemView {
 				}
 			} else if (file instanceof TFolder) {
 				this.updateFolderPathState(oldPath, file.path);
+				// Obsidian emits only one rename event for the folder itself, so
+				// the index and manual order for every child must be rewritten
+				// here or they go stale / get pruned on the next manual render.
+				this.fileIndex.renameFolder(oldPath, file.path);
+				const order = this.plugin.settings.manualOrder;
+				if (order.some((p) => p === oldPath || p.startsWith(`${oldPath}/`))) {
+					this.plugin.settings.manualOrder = order.map((p) => renameNestedPath(p, oldPath, file.path));
+					this.buildManualOrderIndex();
+				}
 			}
 			this.scheduleRebuild();
 		}));
