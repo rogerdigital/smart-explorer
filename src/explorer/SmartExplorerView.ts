@@ -1562,7 +1562,11 @@ class ConfirmModal extends Modal {
 		contentEl.createEl("p", { text: this.message });
 		new Setting(contentEl)
 			.addButton((button) => {
-				button.setButtonText(this.cta).setWarning().onClick(() => this.submit(true));
+				button
+					.setButtonText(this.cta)
+					.setCta()
+					.onClick(() => this.submit(true));
+				button.buttonEl.addClass("mod-destructive", "mod-warning");
 			})
 			.addButton((button) => {
 				button.setButtonText("Cancel").onClick(() => this.close());
