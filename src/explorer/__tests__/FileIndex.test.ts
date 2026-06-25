@@ -1,4 +1,4 @@
-import { normalizeFileRecord } from "../FileIndex";
+import { FileIndex, normalizeFileRecord } from "../FileIndex";
 
 function mockTFile(overrides: Partial<{
 	path: string;
@@ -143,5 +143,65 @@ describe("normalizeFileRecord", () => {
 		const record = normalizeFileRecord(file, null);
 		expect(record.basename).toBe("my file (2024)");
 		expect(record.path).toBe("notes/my file (2024).md");
+	});
+});
+
+function makeIndex(): FileIndex {
+	// renameFolder only touches the internal record map; a null app is fine
+	// because addFile receives a null metadataCache.
+	return new FileIndex({} as any);
+}
+
+describe("FileIndex.renameFolder", () => {
+	it("rewrites paths of files nested under the renamed folder", () => {
+		const index = makeIndex();
+		index.addFile(mockTFile({ path: "old/a.md" }) as any);
+		index.addFile(mockTFile({ path: "old/sub/b.md" }) as any);
+		index.addFile(mockTFile({ path: "other/c.md" }) as any);
+
+		index.renameFolder("old", "new");
+
+		expect(index.get("old/a.md")).toBeUndefined();
+		expect(index.get("old/sub/b.md")).toBeUndefined();
+		expect(index.get("new/a.md")).toBeDefined();
+		const nested = index.get("new/sub/b.md");
+		expect(nested).toBeDefined();
+		expect(nested!.parentPath).toBe("new/sub");
+		// Untouched record stays put.
+		expect(index.get("other/c.md")).toBeDefined();
+	});
+
+	it("preserves record size (no records lost or duplicated)", () => {
+		const index = makeIndex();
+		index.addFile(mockTFile({ path: "old/x.md" }) as any);
+		index.addFile(mockTFile({ path: "old/y.md" }) as any);
+		index.addFile(mockTFile({ path: "keep.md" }) as any);
+
+		index.renameFolder("old", "renamed");
+
+		expect(index.size).toBe(3);
+	});
+
+	it("is a no-op when old and new folder are identical", () => {
+		const index = makeIndex();
+		index.addFile(mockTFile({ path: "f/a.md" }) as any);
+		const before = index.get("f/a.md");
+
+		index.renameFolder("f", "f");
+
+		expect(index.get("f/a.md")).toBe(before);
+	});
+
+	it("does not match folders that merely share a name prefix", () => {
+		const index = makeIndex();
+		index.addFile(mockTFile({ path: "old/file.md" }) as any);
+		index.addFile(mockTFile({ path: "old-backup/file.md" }) as any);
+
+		index.renameFolder("old", "new");
+
+		// "old-backup" must NOT be rewritten even though it starts with "old".
+		expect(index.get("new/file.md")).toBeDefined();
+		expect(index.get("old-backup/file.md")).toBeDefined();
+		expect(index.get("new-backup/file.md")).toBeUndefined();
 	});
 });
