@@ -1077,15 +1077,20 @@ export class SmartExplorerView extends ItemView {
 	revealActiveFile() {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
+
+		this.searchRenderScheduler.cancel();
+		this.query = clearSearchAndFilters(this.query);
 		this.selectedPath = activeFile.path;
 		this.selectedFolderPath = null;
 		this.expandFolderAncestors(getParentFolderPath(activeFile.path));
-		if (this.resolvedViewMode() !== "tree") {
-			this.viewMode = "tree";
-		}
-		this.renderList();
-		if (this.listContainer) {
-			revealPathInContainer(this.listContainer, activeFile.path);
+		this.viewMode = "tree";
+		this.rebuildView();
+
+		if (
+			this.listContainer &&
+			!revealPathInContainer(this.listContainer, activeFile.path)
+		) {
+			new Notice("Active file is hidden by the explorer settings.");
 		}
 	}
 

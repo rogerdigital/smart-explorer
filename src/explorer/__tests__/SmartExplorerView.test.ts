@@ -75,3 +75,46 @@ describe("SmartExplorerView search state", () => {
 		expect(view.rebuildView).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("SmartExplorerView reveal state", () => {
+	it("clears blocking filters and switches to tree mode before reveal", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.app = {
+			workspace: {
+				getActiveFile: () => ({ path: "notes/active.md" }),
+			},
+		};
+		view.query = {
+			searchText: "other",
+			sort: "modified-new",
+			group: "folder",
+			extension: null,
+			fileKind: "images",
+			modifiedWithinDays: 1,
+		};
+		view.viewMode = "list";
+		view.selectedPath = null;
+		view.selectedFolderPath = "notes";
+		view.treeExpandedPaths = new Set<string>();
+		view.searchRenderScheduler = { cancel: jest.fn() };
+		view.rebuildView = jest.fn();
+		view.listContainer = null;
+
+		view.revealActiveFile();
+
+		expect(view.searchRenderScheduler.cancel).toHaveBeenCalledTimes(1);
+		expect(view.query).toMatchObject({
+			searchText: "",
+			sort: "modified-new",
+			group: "folder",
+			extension: null,
+			fileKind: "all",
+			modifiedWithinDays: null,
+		});
+		expect(view.viewMode).toBe("tree");
+		expect(view.selectedPath).toBe("notes/active.md");
+		expect(view.selectedFolderPath).toBeNull();
+		expect(view.treeExpandedPaths).toContain("notes");
+		expect(view.rebuildView).toHaveBeenCalledTimes(1);
+	});
+});
