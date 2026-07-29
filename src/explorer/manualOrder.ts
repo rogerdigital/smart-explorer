@@ -19,21 +19,53 @@ export type ManualOrderSection = {
 export function reconcileManualOrder(
 	currentOrder: string[],
 	records: FileRecord[],
-	fallbackOrder?: string[],
+	fallbackOrder: string[] = records.map((record) => record.path),
 ): string[] {
-	const known = new Set(records.map((r) => r.path));
-	const pruned = currentOrder.filter((p) => known.has(p));
+	const knownPaths = records.map((record) => record.path);
+	const known = new Set(knownPaths);
+	const seen = new Set<string>();
+	const nextOrder: string[] = [];
 
-	const present = new Set(pruned);
-	const missing = (fallbackOrder ?? records.map((r) => r.path)).filter(
-		(p) => known.has(p) && !present.has(p),
-	);
+	const appendKnown = (paths: string[]) => {
+		for (const path of paths) {
+			if (!known.has(path) || seen.has(path)) continue;
+			seen.add(path);
+			nextOrder.push(path);
+		}
+	};
 
-	if (pruned.length === currentOrder.length && missing.length === 0) {
+	appendKnown(currentOrder);
+	appendKnown(fallbackOrder);
+	appendKnown(knownPaths);
+
+	if (
+		nextOrder.length === currentOrder.length &&
+		nextOrder.every((path, index) => path === currentOrder[index])
+	) {
 		return currentOrder;
 	}
+	return nextOrder;
+}
 
-	return [...pruned, ...missing];
+export function renameManualOrderPaths(
+	currentOrder: string[],
+	oldPath: string,
+	newPath: string,
+): string[] {
+	let changed = false;
+	const oldPrefix = `${oldPath}/`;
+	const nextOrder = currentOrder.map((path) => {
+		if (path === oldPath) {
+			changed = true;
+			return newPath;
+		}
+		if (path.startsWith(oldPrefix)) {
+			changed = true;
+			return `${newPath}/${path.slice(oldPrefix.length)}`;
+		}
+		return path;
+	});
+	return changed ? nextOrder : currentOrder;
 }
 
 /**

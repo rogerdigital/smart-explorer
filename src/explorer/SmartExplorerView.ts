@@ -6,7 +6,7 @@ import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
-import { reconcileManualOrder, reorderManualOrder } from "./manualOrder";
+import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder } from "./manualOrder";
 import { formatFileModifiedDate, formatFileParent } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerGroupMode, resolveExplorerViewMode, resolveManualSeedSort } from "./viewMode";
@@ -224,23 +224,11 @@ export class SmartExplorerView extends ItemView {
 				if (this.selectedPath === oldPath) {
 					this.selectedPath = file.path;
 				}
-				const order = this.plugin.settings.manualOrder;
-				const idx = order.indexOf(oldPath);
-				if (idx >= 0) {
-					order[idx] = file.path;
-					this.buildManualOrderIndex();
-				}
+				this.updateManualOrderAfterRename(oldPath, file.path);
 			} else if (file instanceof TFolder) {
 				this.updateFolderPathState(oldPath, file.path);
-				// Obsidian emits only one rename event for the folder itself, so
-				// the index and manual order for every child must be rewritten
-				// here or they go stale / get pruned on the next manual render.
 				this.fileIndex.renameFolder(oldPath, file.path);
-				const order = this.plugin.settings.manualOrder;
-				if (order.some((p) => p === oldPath || p.startsWith(`${oldPath}/`))) {
-					this.plugin.settings.manualOrder = order.map((p) => renameNestedPath(p, oldPath, file.path));
-					this.buildManualOrderIndex();
-				}
+				this.updateManualOrderAfterRename(oldPath, file.path);
 			}
 			this.scheduleRebuild();
 		}));
@@ -587,9 +575,10 @@ export class SmartExplorerView extends ItemView {
 
 		const hiddenExts = new Set(this.plugin.settings.hiddenExtensions);
 
-		let records = this.fileIndex.getAll();
+		const allRecords = this.fileIndex.getAll();
+		let records = allRecords;
 		if (hiddenExts.size > 0) {
-			records = records.filter((r) => !hiddenExts.has(r.extension));
+			records = allRecords.filter((record) => !hiddenExts.has(record.extension));
 		}
 
 		const mode = this.resolvedViewMode();
@@ -606,7 +595,7 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		if (this.query.sort === "manual") {
-			this.initializeManualOrder(records);
+			this.initializeManualOrder(allRecords);
 		}
 
 		const effectiveQuery = { ...this.query, group: this.resolvedGroupMode() };
@@ -669,7 +658,7 @@ export class SmartExplorerView extends ItemView {
 			const rowHeight = Platform.isMobile ? 44 : 28;
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
-				onReorder: (path, toIndex, sectionId) => this.handleManualReorder(path, toIndex, sections, effectiveQuery.group, sectionId),
+				onReorder: (path, toIndex) => this.handleManualReorder(path, toIndex, sections),
 			});
 			this.dragSortManager.enable();
 
@@ -1075,6 +1064,16 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
+	private updateManualOrderAfterRename(oldPath: string, newPath: string) {
+		const order = this.plugin.settings.manualOrder;
+		const nextOrder = renameManualOrderPaths(order, oldPath, newPath);
+		if (nextOrder === order) return;
+
+		this.plugin.settings.manualOrder = nextOrder;
+		this.buildManualOrderIndex();
+		this.scheduleSaveOrder();
+	}
+
 	revealActiveFile() {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
@@ -1221,15 +1220,19 @@ export class SmartExplorerView extends ItemView {
 		);
 	}
 
-	private initializeManualOrder(records: FileRecord[]) {
+	private initializeManualOrder(allRecords: FileRecord[]) {
 		const order = this.plugin.settings.manualOrder;
-		const seeded = buildSections(records, {
+		const seeded = buildSections(allRecords, {
 			...this.query,
+			searchText: "",
+			group: "none",
+			extension: null,
+			fileKind: "all",
+			modifiedWithinDays: null,
 			sort: this.manualSeedSort,
-			group: this.resolvedGroupMode(),
 		});
-		const fallbackOrder = seeded.flatMap((s) => s.records.map((r) => r.path));
-		const reconciled = reconcileManualOrder(order, records, fallbackOrder);
+		const fallbackOrder = seeded[0]?.records.map((record) => record.path) ?? [];
+		const reconciled = reconcileManualOrder(order, allRecords, fallbackOrder);
 		if (reconciled !== order) {
 			this.plugin.settings.manualOrder = reconciled;
 			this.scheduleSaveOrder();
@@ -1241,8 +1244,6 @@ export class SmartExplorerView extends ItemView {
 		draggedPath: string,
 		toIndex: number,
 		sections: { id: string; records: FileRecord[] }[],
-		group: GroupMode = this.resolvedGroupMode(),
-		sectionId?: string,
 	) {
 		const order = this.plugin.settings.manualOrder;
 		const nextOrder = reorderManualOrder(
@@ -1250,8 +1251,6 @@ export class SmartExplorerView extends ItemView {
 			draggedPath,
 			toIndex,
 			sections,
-			group,
-			sectionId,
 		);
 		if (nextOrder.join("\n") === order.join("\n")) return;
 		this.manualOrderUndoStack.push([...order]);

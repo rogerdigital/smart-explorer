@@ -1,4 +1,8 @@
-import { reconcileManualOrder, reorderManualOrder } from "../manualOrder";
+import {
+	reconcileManualOrder,
+	renameManualOrderPaths,
+	reorderManualOrder,
+} from "../manualOrder";
 import type { FileRecord } from "../../types";
 
 function makeRecord(path: string): FileRecord {
@@ -140,5 +144,49 @@ describe("reconcileManualOrder", () => {
 		const result = reconcileManualOrder([], records, fallback);
 
 		expect(result).toEqual(["b.md", "a.md"]);
+	});
+
+	it("keeps every known file when the fallback order is partial", () => {
+		const records = ["a.md", "b.md", "c.md"].map(makeRecord);
+
+		const result = reconcileManualOrder([], records, ["b.md"]);
+
+		expect(result).toEqual(["b.md", "a.md", "c.md"]);
+	});
+
+	it("deduplicates saved paths while preserving the first occurrence", () => {
+		const records = ["a.md", "b.md"].map(makeRecord);
+
+		const result = reconcileManualOrder(
+			["a.md", "a.md", "b.md"],
+			records,
+			["b.md", "a.md"],
+		);
+
+		expect(result).toEqual(["a.md", "b.md"]);
+	});
+});
+
+describe("renameManualOrderPaths", () => {
+	it("rewrites a renamed file path without changing its position", () => {
+		expect(renameManualOrderPaths(
+			["a.md", "folder/old.md", "b.md"],
+			"folder/old.md",
+			"folder/new.md",
+		)).toEqual(["a.md", "folder/new.md", "b.md"]);
+	});
+
+	it("rewrites every child path after a folder rename", () => {
+		expect(renameManualOrderPaths(
+			["a.md", "old/x.md", "old/nested/y.md", "b.md"],
+			"old",
+			"new",
+		)).toEqual(["a.md", "new/x.md", "new/nested/y.md", "b.md"]);
+	});
+
+	it("returns the same reference when a rename does not affect the order", () => {
+		const order = ["a.md", "b.md"];
+
+		expect(renameManualOrderPaths(order, "missing", "new")).toBe(order);
 	});
 });
