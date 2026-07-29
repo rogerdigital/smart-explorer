@@ -106,14 +106,26 @@ function sortFolderChildren(
 ) {
 	const folders = children.filter((child): child is ExplorerTreeFolderNode => child.type === "folder")
 		.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) || a.path.localeCompare(b.path));
-	const files = sortRecords(
-		children.filter((child): child is ExplorerTreeFileNode => child.type === "file").map((child) => child.record),
-		sort,
-		manualOrderIndex,
-	).map((record) => children.find((child) => child.type === "file" && child.path === record.path)!);
+	const fileNodes = children.filter(
+		(child): child is ExplorerTreeFileNode => child.type === "file",
+	);
+	const files = sortTreeFileNodes(fileNodes, sort, manualOrderIndex);
 
 	children.splice(0, children.length, ...folders, ...files);
 	for (const folder of folders) {
 		sortFolderChildren(folder.children, sort, manualOrderIndex);
 	}
+}
+
+export function sortTreeFileNodes(
+	nodes: ExplorerTreeFileNode[],
+	sort: Exclude<SortMode, "manual">,
+	manualOrderIndex?: Map<string, number>,
+): ExplorerTreeFileNode[] {
+	const nodesByPath = new Map(nodes.map((node) => [node.path, node]));
+	return sortRecords(
+		nodes.map((node) => node.record),
+		sort,
+		manualOrderIndex,
+	).map((record) => nodesByPath.get(record.path)!);
 }
