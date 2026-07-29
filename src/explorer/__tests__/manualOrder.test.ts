@@ -22,7 +22,7 @@ describe("reorderManualOrder", () => {
 			{ id: "all", records: ["a.md", "b.md", "c.md"].map(makeRecord) },
 		];
 
-		const result = reorderManualOrder(["a.md", "b.md", "c.md"], "c.md", 1, sections, "none");
+		const result = reorderManualOrder(["a.md", "b.md", "c.md"], "c.md", 1, sections);
 
 		expect(result).toEqual(["a.md", "c.md", "b.md"]);
 	});
@@ -33,7 +33,7 @@ describe("reorderManualOrder", () => {
 		const order = ["2026-04-15.md", "2026-04-16.md", "2026-04-17.md", "Clarify Success.md"];
 		const sections = [{ id: "all", records: order.map(makeRecord) }];
 
-		const result = reorderManualOrder([...order], "2026-04-16.md", 1, sections, "none");
+		const result = reorderManualOrder([...order], "2026-04-16.md", 1, sections);
 
 		expect(result).toEqual(order);
 	});
@@ -42,7 +42,7 @@ describe("reorderManualOrder", () => {
 		const order = ["2026-04-15.md", "2026-04-16.md", "2026-04-17.md", "Clarify Success.md"];
 		const sections = [{ id: "all", records: order.map(makeRecord) }];
 
-		const result = reorderManualOrder([...order], "2026-04-16.md", 0, sections, "none");
+		const result = reorderManualOrder([...order], "2026-04-16.md", 0, sections);
 
 		expect(result).toEqual([
 			"2026-04-16.md",
@@ -52,22 +52,40 @@ describe("reorderManualOrder", () => {
 		]);
 	});
 
-	it("moves a dragged path to the end of a grouped section", () => {
-		const sections = [
-			{ id: "notes", records: ["notes/a.md", "notes/b.md"].map(makeRecord) },
-			{ id: "assets", records: ["assets/c.png"].map(makeRecord) },
-		];
+	it("maps a filtered drop target back into the global order", () => {
+		const order = ["a.md", "b.md", "c.md", "d.md"];
+		const sections = [{
+			id: "all",
+			records: ["c.md", "d.md"].map(makeRecord),
+		}];
 
-		const result = reorderManualOrder(
-			["notes/a.md", "notes/b.md", "assets/c.png"],
-			"notes/a.md",
-			2,
-			sections,
-			"folder",
-			"notes",
-		);
+		const result = reorderManualOrder(order, "d.md", 0, sections);
 
-		expect(result).toEqual(["notes/b.md", "notes/a.md", "assets/c.png"]);
+		expect(result).toEqual(["a.md", "b.md", "d.md", "c.md"]);
+	});
+
+	it("moves a visible item after the last visible anchor without moving trailing hidden files", () => {
+		const order = ["a.md", "hidden-1.md", "b.md", "hidden-2.md"];
+		const sections = [{
+			id: "all",
+			records: ["a.md", "b.md"].map(makeRecord),
+		}];
+
+		const result = reorderManualOrder(order, "a.md", 2, sections);
+
+		expect(result).toEqual(["hidden-1.md", "b.md", "a.md", "hidden-2.md"]);
+	});
+
+	it("does not move the only visible item", () => {
+		const order = ["hidden-a.md", "visible.md", "hidden-b.md"];
+		const sections = [{
+			id: "all",
+			records: [makeRecord("visible.md")],
+		}];
+
+		const result = reorderManualOrder(order, "visible.md", 1, sections);
+
+		expect(result).toEqual(order);
 	});
 
 	it("does not mutate the previous order snapshot", () => {
@@ -76,7 +94,7 @@ describe("reorderManualOrder", () => {
 			{ id: "all", records: order.map(makeRecord) },
 		];
 
-		reorderManualOrder(order, "a.md", 2, sections, "none");
+		reorderManualOrder(order, "a.md", 2, sections);
 
 		expect(order).toEqual(["a.md", "b.md", "c.md"]);
 	});
