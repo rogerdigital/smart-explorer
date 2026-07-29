@@ -15,6 +15,7 @@ import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion
 import { appendMarkdownExtension, buildCreationPath, buildFileRenamePath, buildSiblingPath, getParentFolderPath, getPathName, resolveCreationFolder } from "./creationPath";
 import { revealPathInContainer } from "./revealPath";
 import { isTouchMovePastThreshold, TOUCH_LONG_PRESS_MS } from "./touchLongPress";
+import { SearchRenderScheduler } from "./searchRenderScheduler";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -77,7 +78,7 @@ export class SmartExplorerView extends ItemView {
 	private treeExpandedPaths: Set<string> = new Set();
 	private visibleTreeFolderPaths: string[] = [];
 	private virtualList: VirtualList | null = null;
-	private searchTimeout: number | null = null;
+	private searchRenderScheduler = new SearchRenderScheduler();
 	private rebuildTimeout: number | null = null;
 	private dragSortManager: DragSortManager | null = null;
 	private manualOrderIndex: Map<string, number> = new Map();
@@ -176,7 +177,7 @@ export class SmartExplorerView extends ItemView {
 		this.groupSelect = null;
 		this.inlineEdit = null;
 		this.manualHintEl = null;
-		if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
+		this.searchRenderScheduler.cancel();
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		// Flush a pending manual-order save before the view goes away; the
 		// debounced 500ms save could otherwise be dropped, losing the user's
@@ -312,11 +313,8 @@ export class SmartExplorerView extends ItemView {
 		this.searchInput = searchInput;
 		searchInput.value = this.query.searchText;
 		searchInput.addEventListener("input", () => {
-			if (this.searchTimeout) window.clearTimeout(this.searchTimeout);
-			this.searchTimeout = window.setTimeout(() => {
-				this.query.searchText = searchInput.value;
-				this.renderList();
-			}, 200);
+			this.query.searchText = searchInput.value;
+			this.searchRenderScheduler.schedule(() => this.renderList());
 		});
 
 		const filterRow = toolbar.createDiv({ cls: "smart-explorer-toolbar-row smart-explorer-toolbar-filters" });
@@ -429,6 +427,7 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private clearSearchAndFilters() {
+		this.searchRenderScheduler.cancel();
 		this.query = clearSearchAndFilters(this.query);
 		this.rebuildView();
 	}
@@ -483,6 +482,7 @@ export class SmartExplorerView extends ItemView {
 			if (e.key === "Escape") {
 				if (this.query.searchText) {
 					e.preventDefault();
+					this.searchRenderScheduler.cancel();
 					this.query.searchText = "";
 					if (this.searchInput) this.searchInput.value = "";
 					this.renderList();

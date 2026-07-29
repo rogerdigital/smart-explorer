@@ -48,3 +48,30 @@ describe("SmartExplorerView manual-order state", () => {
 		expect(view.scheduleSaveOrder).not.toHaveBeenCalled();
 	});
 });
+
+describe("SmartExplorerView search state", () => {
+	it("cancels a pending search render before clearing filters", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.query = {
+			searchText: "stale",
+			sort: "name-asc",
+			group: "none",
+			extension: "md",
+			fileKind: "markdown",
+			modifiedWithinDays: 7,
+		};
+		view.searchRenderScheduler = { cancel: jest.fn() };
+		view.rebuildView = jest.fn();
+
+		view.clearSearchAndFilters();
+
+		expect(view.searchRenderScheduler.cancel).toHaveBeenCalledTimes(1);
+		expect(view.query).toMatchObject({
+			searchText: "",
+			extension: null,
+			fileKind: "all",
+			modifiedWithinDays: null,
+		});
+		expect(view.rebuildView).toHaveBeenCalledTimes(1);
+	});
+});
