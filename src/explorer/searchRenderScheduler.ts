@@ -1,11 +1,18 @@
 const SEARCH_RENDER_DELAY_MS = 200;
 
+export type TimerHost = {
+	setTimeout(callback: () => void, delay: number): number;
+	clearTimeout(handle: number): void;
+};
+
 export class SearchRenderScheduler {
-	private timer: ReturnType<typeof setTimeout> | null = null;
+	private timer: number | null = null;
+
+	constructor(private readonly timerHost: TimerHost = activeWindow) {}
 
 	schedule(render: () => void) {
 		this.cancel();
-		this.timer = globalThis.setTimeout(() => {
+		this.timer = this.timerHost.setTimeout(() => {
 			this.timer = null;
 			render();
 		}, SEARCH_RENDER_DELAY_MS);
@@ -13,7 +20,7 @@ export class SearchRenderScheduler {
 
 	cancel() {
 		if (this.timer === null) return;
-		globalThis.clearTimeout(this.timer);
+		this.timerHost.clearTimeout(this.timer);
 		this.timer = null;
 	}
 }

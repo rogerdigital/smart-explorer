@@ -13,6 +13,7 @@ npm run dev       # esbuild watch mode
 npm run build     # tsc check + esbuild production
 npm test          # jest with ts-jest
 npm run lint      # eslint
+npm run verify    # lint + production build + all tests
 ```
 
 ## Architecture
