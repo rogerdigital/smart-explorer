@@ -1080,6 +1080,9 @@ export class SmartExplorerView extends ItemView {
 
 		this.searchRenderScheduler.cancel();
 		this.query = clearSearchAndFilters(this.query);
+		if (this.query.sort === "manual") {
+			this.query.sort = this.manualSeedSort;
+		}
 		this.selectedPath = activeFile.path;
 		this.selectedFolderPath = null;
 		this.expandFolderAncestors(getParentFolderPath(activeFile.path));

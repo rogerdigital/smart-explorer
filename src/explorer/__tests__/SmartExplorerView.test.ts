@@ -117,4 +117,36 @@ describe("SmartExplorerView reveal state", () => {
 		expect(view.treeExpandedPaths).toContain("notes");
 		expect(view.rebuildView).toHaveBeenCalledTimes(1);
 	});
+
+	it("leaves manual sort so tree reveal can become effective", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.app = {
+			workspace: {
+				getActiveFile: () => ({ path: "notes/active.md" }),
+			},
+		};
+		view.query = {
+			searchText: "other",
+			sort: "manual",
+			group: "none",
+			extension: null,
+			fileKind: "all",
+			modifiedWithinDays: null,
+		};
+		view.manualSeedSort = "modified-new";
+		view.viewMode = "list";
+		view.selectedPath = null;
+		view.selectedFolderPath = null;
+		view.treeExpandedPaths = new Set<string>();
+		view.searchRenderScheduler = { cancel: jest.fn() };
+		view.rebuildView = jest.fn();
+		view.listContainer = null;
+
+		view.revealActiveFile();
+
+		expect(view.query.sort).toBe("modified-new");
+		expect(view.viewMode).toBe("tree");
+		expect(view.resolvedViewMode()).toBe("tree");
+		expect(view.rebuildView).toHaveBeenCalledTimes(1);
+	});
 });
