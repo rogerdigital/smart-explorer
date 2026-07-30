@@ -10,7 +10,7 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
 		"test": "node --experimental-vm-modules node_modules/.bin/jest",
-		"test:release": "node --test scripts/__tests__/validate-release.test.mjs",
+		"test:release": "node --test scripts/__tests__/*.test.mjs",
 		"verify": "npm run lint && npm run build && npm test -- --runInBand && npm run test:release"
 	},
 	"keywords": [
