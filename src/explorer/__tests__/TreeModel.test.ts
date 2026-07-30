@@ -1,5 +1,12 @@
-import { buildTree } from "../TreeModel";
-import type { ExplorerTreeFolderNode, ExplorerTreeNode } from "../TreeModel";
+import {
+	buildTree,
+	sortTreeFileNodes,
+} from "../TreeModel";
+import type {
+	ExplorerTreeFileNode,
+	ExplorerTreeFolderNode,
+	ExplorerTreeNode,
+} from "../TreeModel";
 import type { ExplorerQuery, FileRecord } from "../../types";
 
 function makeRecord(path: string, overrides: Partial<FileRecord> = {}): FileRecord {
@@ -76,5 +83,35 @@ describe("buildTree", () => {
 		expect(tree.children.map((node) => node.path)).toEqual(["00-Inbox", "02-Projects", "Home.md"]);
 		const projects = expectFolder(tree.children.find((node) => node.path === "02-Projects"));
 		expect(projects.children.map((node) => node.path)).toEqual(["02-Projects/Atlas Launch"]);
+	});
+});
+
+describe("sortTreeFileNodes", () => {
+	it("sorts file nodes without losing node identity", () => {
+		const oldNode: ExplorerTreeFileNode = {
+			type: "file",
+			id: "notes/old.md",
+			name: "old",
+			path: "notes/old.md",
+			record: makeRecord("notes/old.md", { mtime: 1000 }),
+			depth: 1,
+		};
+		const newNode: ExplorerTreeFileNode = {
+			type: "file",
+			id: "notes/new.md",
+			name: "new",
+			path: "notes/new.md",
+			record: makeRecord("notes/new.md", { mtime: 3000 }),
+			depth: 1,
+		};
+
+		const result = sortTreeFileNodes(
+			[oldNode, newNode],
+			"modified-new",
+		);
+
+		expect(result).toEqual([newNode, oldNode]);
+		expect(result[0]).toBe(newNode);
+		expect(result[1]).toBe(oldNode);
 	});
 });

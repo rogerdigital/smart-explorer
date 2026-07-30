@@ -14,28 +14,40 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
 
-      - name: Build plugin
+      - name: Validate release metadata
+        run: node scripts/validate-release.mjs "$GITHUB_REF_NAME"
+
+      - name: Verify tagged commit belongs to main
         run: |
-          npm ci
-          npm run build
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tagged commit is not contained in origin/main."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify plugin
+        run: npm run verify
 
       - name: Publish release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" main.js manifest.json styles.css --clobber
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" main.js manifest.json styles.css --clobber
           else
-            gh release create "$tag" \
-              --title="$tag" \
+            gh release create "$GITHUB_REF_NAME" \
+              --title="$GITHUB_REF_NAME" \
               --generate-notes \
               main.js manifest.json styles.css
           fi

@@ -73,6 +73,7 @@ npm run dev       # watch mode
 npm run build     # type-check + production build
 npm test          # unit tests
 npm run lint      # eslint
+npm run verify    # lint + production build + all tests
 ```
 
 ## License

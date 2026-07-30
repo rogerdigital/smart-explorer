@@ -1,4 +1,4 @@
-import type { FileRecord, GroupMode } from "../types";
+import type { FileRecord } from "../types";
 
 export type ManualOrderSection = {
 	id: string;
@@ -19,21 +19,53 @@ export type ManualOrderSection = {
 export function reconcileManualOrder(
 	currentOrder: string[],
 	records: FileRecord[],
-	fallbackOrder?: string[],
+	fallbackOrder: string[] = records.map((record) => record.path),
 ): string[] {
-	const known = new Set(records.map((r) => r.path));
-	const pruned = currentOrder.filter((p) => known.has(p));
+	const knownPaths = records.map((record) => record.path);
+	const known = new Set(knownPaths);
+	const seen = new Set<string>();
+	const nextOrder: string[] = [];
 
-	const present = new Set(pruned);
-	const missing = (fallbackOrder ?? records.map((r) => r.path)).filter(
-		(p) => known.has(p) && !present.has(p),
-	);
+	const appendKnown = (paths: string[]) => {
+		for (const path of paths) {
+			if (!known.has(path) || seen.has(path)) continue;
+			seen.add(path);
+			nextOrder.push(path);
+		}
+	};
 
-	if (pruned.length === currentOrder.length && missing.length === 0) {
+	appendKnown(currentOrder);
+	appendKnown(fallbackOrder);
+	appendKnown(knownPaths);
+
+	if (
+		nextOrder.length === currentOrder.length &&
+		nextOrder.every((path, index) => path === currentOrder[index])
+	) {
 		return currentOrder;
 	}
+	return nextOrder;
+}
 
-	return [...pruned, ...missing];
+export function renameManualOrderPaths(
+	currentOrder: string[],
+	oldPath: string,
+	newPath: string,
+): string[] {
+	let changed = false;
+	const oldPrefix = `${oldPath}/`;
+	const nextOrder = currentOrder.map((path) => {
+		if (path === oldPath) {
+			changed = true;
+			return newPath;
+		}
+		if (path.startsWith(oldPrefix)) {
+			changed = true;
+			return `${newPath}/${path.slice(oldPrefix.length)}`;
+		}
+		return path;
+	});
+	return changed ? nextOrder : currentOrder;
 }
 
 /**
@@ -50,53 +82,43 @@ export function reorderManualOrder(
 	currentOrder: string[],
 	draggedPath: string,
 	toIndex: number,
-	_sections: ManualOrderSection[],
-	group: GroupMode,
-	sectionId?: string,
-): string[] {
-	const nextOrder = [...currentOrder];
-	const fromGlobal = nextOrder.indexOf(draggedPath);
-	if (fromGlobal < 0) return nextOrder;
-
-	nextOrder.splice(fromGlobal, 1);
-
-	const adjusted = fromGlobal < toIndex ? toIndex - 1 : toIndex;
-
-	let targetGlobal: number;
-	if (sectionId && group !== "none") {
-		targetGlobal = clampToGroupEnd(nextOrder, adjusted, _sections, sectionId);
-	} else {
-		targetGlobal = Math.max(0, Math.min(adjusted, nextOrder.length));
-	}
-
-	nextOrder.splice(targetGlobal, 0, draggedPath);
-	return nextOrder;
-}
-
-/**
- * For grouped manual order, keep the dragged item within its section's global
- * span. The adjusted index is measured from the start of the visible list, so
- * we translate it into a global index bounded by the section's first/last row.
- */
-function clampToGroupEnd(
-	order: string[],
-	adjustedIndex: number,
 	sections: ManualOrderSection[],
-	sectionId: string,
-): number {
-	const section = sections.find((s) => s.id === sectionId);
-	if (!section || section.records.length === 0) {
-		return order.length;
+): string[] {
+	const visiblePaths = sections.flatMap((section) =>
+		section.records.map((record) => record.path),
+	);
+	const fromVisible = visiblePaths.indexOf(draggedPath);
+	if (fromVisible < 0) return [...currentOrder];
+
+	const visibleWithoutDragged = visiblePaths.filter((path) => path !== draggedPath);
+	if (visibleWithoutDragged.length === 0) return [...currentOrder];
+
+	const nextOrder = currentOrder.filter((path) => path !== draggedPath);
+	if (nextOrder.length === currentOrder.length) return [...currentOrder];
+
+	const adjustedVisibleIndex = fromVisible < toIndex ? toIndex - 1 : toIndex;
+	const targetVisibleIndex = Math.max(
+		0,
+		Math.min(adjustedVisibleIndex, visibleWithoutDragged.length),
+	);
+	const targetPath = visibleWithoutDragged[targetVisibleIndex];
+
+	let targetGlobalIndex: number;
+	if (targetPath !== undefined) {
+		targetGlobalIndex = nextOrder.indexOf(targetPath);
+		if (targetGlobalIndex < 0) return [...currentOrder];
+	} else {
+		const lastVisiblePath = visibleWithoutDragged[
+			visibleWithoutDragged.length - 1
+		];
+		const lastVisibleIndex = lastVisiblePath === undefined
+			? -1
+			: nextOrder.indexOf(lastVisiblePath);
+		targetGlobalIndex = lastVisibleIndex < 0
+			? nextOrder.length
+			: lastVisibleIndex + 1;
 	}
 
-	const firstPath = section.records[0]!.path;
-	const lastPath = section.records[section.records.length - 1]!.path;
-	const firstGlobal = order.indexOf(firstPath);
-	const lastGlobal = order.indexOf(lastPath);
-
-	if (firstGlobal < 0 && lastGlobal < 0) return order.length;
-
-	const lower = firstGlobal >= 0 ? firstGlobal : lastGlobal;
-	const upper = lastGlobal >= 0 ? lastGlobal + 1 : order.length;
-	return Math.max(lower, Math.min(adjustedIndex, upper));
+	nextOrder.splice(targetGlobalIndex, 0, draggedPath);
+	return nextOrder;
 }
