@@ -30,6 +30,7 @@ jest.mock(
 
 import { installObsidianDomShim, mockElementBox } from "../../test-utils/obsidianDom";
 import type { FileRecord } from "../../types";
+import { setIcon } from "obsidian";
 import { SmartExplorerView } from "../SmartExplorerView";
 
 function makeRecord(path: string, extension: string): FileRecord {
@@ -344,6 +345,90 @@ describe("SmartExplorerView toolbar controls", () => {
 
 		expect(container.querySelector(".smart-explorer-empty")?.textContent).toBe("No files in vault.");
 		expect(getFolderPaths).not.toHaveBeenCalled();
+	});
+
+	it("clears populated count and visible folders when the vault becomes empty", () => {
+		const { view, container } = makeView();
+		let records = [makeRecord("notes/one.md", "md")];
+		let folders = ["notes"];
+		view.fileIndex = {
+			getAll: () => records,
+			getFolderPaths: () => folders,
+		};
+		view.viewMode = "tree";
+
+		view.renderList();
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("1 file");
+		expect(view.visibleTreeFolderPaths).toEqual(["notes"]);
+
+		records = [];
+		folders = [];
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("0 files");
+		expect(view.visibleTreeFolderPaths).toEqual([]);
+	});
+
+	it("finalizes count and manual controls when visible files become hidden", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("report.pdf", "pdf")],
+			getFolderPaths: jest.fn(),
+		};
+		view.viewMode = "list";
+
+		view.renderList();
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("1 file");
+		view.query.sort = "manual";
+		view.updateManualOrderControls();
+		expect(container.querySelector(".smart-explorer-list")?.classList.contains("is-manual-sorting")).toBe(true);
+
+		view.query.sort = "name-asc";
+		view.plugin.settings.hiddenExtensions = ["pdf"];
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("0 files");
+		expect(container.querySelector(".smart-explorer-list")?.classList.contains("is-manual-sorting")).toBe(false);
+		expect(container.querySelector(".smart-explorer-manual-hint")?.classList.contains("is-hidden")).toBe(true);
+		expect(container.querySelector(".smart-explorer-manual-undo")?.classList.contains("is-hidden")).toBe(true);
+	});
+
+	it("synchronizes view-mode and manual controls in no-match states", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("notes/one.md", "md")],
+			getFolderPaths: jest.fn(() => ["notes"]),
+		};
+		view.query.searchText = "missing";
+		view.viewMode = "list";
+		const viewModeButton = container.querySelector<HTMLButtonElement>(".smart-explorer-view-mode")!;
+		const setIconMock = jest.mocked(setIcon);
+		setIconMock.mockClear();
+
+		view.renderList();
+
+		expect(viewModeButton.getAttribute("aria-label")).toBe("List view");
+		expect(viewModeButton.classList.contains("is-active")).toBe(false);
+		expect(setIconMock).toHaveBeenCalledWith(viewModeButton, "list");
+
+		view.viewMode = "tree";
+		setIconMock.mockClear();
+		view.renderList();
+
+		expect(viewModeButton.getAttribute("aria-label")).toBe("Tree view");
+		expect(viewModeButton.classList.contains("is-active")).toBe(true);
+		expect(setIconMock).toHaveBeenCalledWith(viewModeButton, "folder-tree");
+
+		view.query.sort = "manual";
+		setIconMock.mockClear();
+		view.renderList();
+
+		expect(viewModeButton.getAttribute("aria-label")).toBe("Manual sort uses list view");
+		expect(viewModeButton.classList.contains("is-active")).toBe(false);
+		expect(setIconMock).toHaveBeenCalledWith(viewModeButton, "list");
+		expect(container.querySelector(".smart-explorer-list")?.classList.contains("is-manual-sorting")).toBe(true);
+		expect(container.querySelector(".smart-explorer-manual-hint")?.classList.contains("is-hidden")).toBe(false);
+		expect(container.querySelector(".smart-explorer-manual-undo")?.classList.contains("is-hidden")).toBe(false);
 	});
 
 	it.each([

@@ -689,6 +689,7 @@ export class SmartExplorerView extends ItemView {
 				text: "No files in vault.",
 				attr: { role: "status" },
 			});
+			this.finalizeRender(0, 0);
 			return;
 		}
 		if (records.length === 0 && allRecords.length > 0 && !hasInlineCreate) {
@@ -697,6 +698,7 @@ export class SmartExplorerView extends ItemView {
 				text: "All files are hidden by extension settings.",
 				attr: { role: "status" },
 			});
+			this.finalizeRender(0, records.length);
 			return;
 		}
 
@@ -710,13 +712,13 @@ export class SmartExplorerView extends ItemView {
 
 		if (mode === "tree") {
 			if (displayed === 0 && folderPaths.length === 0 && hasFilters && !hasInlineCreate) {
-				this.updateFileCount(displayed, records.length);
 				this.renderNoMatches();
+				this.finalizeRender(displayed, records.length);
 				return;
 			}
 			this.syncSelectedPathFromActiveFile();
 			const tree = buildTree(records, effectiveQuery, this.manualOrderIndex, folderPaths);
-			this.visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
+			const visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
 			const rootCreateEl = this.createInlineCreateElement("", 0);
 			if (rootCreateEl) {
 				this.listContainer.appendChild(rootCreateEl);
@@ -724,19 +726,16 @@ export class SmartExplorerView extends ItemView {
 			for (const node of tree.children) {
 				this.listContainer.appendChild(this.createTreeNodeElement(node));
 			}
-			this.updateFileCount(displayed, records.length);
-			this.updateViewModeControl();
-			this.updateManualOrderControls();
+			this.finalizeRender(displayed, records.length, visibleTreeFolderPaths);
 			return;
 		}
 
 		if (displayed === 0 && hasFilters && !hasInlineCreate) {
-			this.updateFileCount(displayed, records.length);
 			this.renderNoMatches();
+			this.finalizeRender(displayed, records.length);
 			return;
 		}
 
-		this.visibleTreeFolderPaths = [];
 		const rootCreateEl = this.createInlineCreateElement("", 0, true);
 		if (rootCreateEl) {
 			this.listContainer.appendChild(rootCreateEl);
@@ -773,7 +772,12 @@ export class SmartExplorerView extends ItemView {
 			this.attachManualDragRows(sections);
 		}
 
-		this.updateFileCount(displayed, records.length);
+		this.finalizeRender(displayed, records.length);
+	}
+
+	private finalizeRender(displayed: number, total: number, visibleTreeFolderPaths: string[] = []) {
+		this.visibleTreeFolderPaths = visibleTreeFolderPaths;
+		this.updateFileCount(displayed, total);
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
 	}
