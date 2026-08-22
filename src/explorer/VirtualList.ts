@@ -1,7 +1,6 @@
 import { Platform } from "obsidian";
+import { getListRowHeight } from "./rowHeight";
 
-const ROW_HEIGHT_DESKTOP = 28;
-const ROW_HEIGHT_MOBILE = 44;
 const BUFFER_ROWS = 10;
 // Virtual scrolling is disabled: the virtualized window's content
 // rebuild-per-scroll-frame produced a scroll speed that felt faster than the
@@ -25,7 +24,7 @@ export class VirtualList {
 
 	constructor(container: HTMLElement) {
 		this.container = container;
-		this.rowHeight = Platform.isMobile ? ROW_HEIGHT_MOBILE : ROW_HEIGHT_DESKTOP;
+		this.rowHeight = getListRowHeight(Platform.isMobile);
 		this.spacerTop = container.createDiv({ cls: "smart-explorer-virtual-spacer" });
 		this.content = container.createDiv({ cls: "smart-explorer-virtual-content" });
 		this.spacerBottom = container.createDiv({ cls: "smart-explorer-virtual-spacer" });

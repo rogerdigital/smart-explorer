@@ -33,11 +33,12 @@ import type { FileRecord } from "../../types";
 import { SmartExplorerView } from "../SmartExplorerView";
 
 function makeRecord(path: string, extension: string): FileRecord {
+	const parentPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 	return {
 		path,
 		basename: path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? path,
 		extension,
-		parentPath: "",
+		parentPath,
 		size: 1,
 		ctime: 1,
 		mtime: 1,
@@ -205,6 +206,148 @@ describe("SmartExplorerView DOM foundation", () => {
 });
 
 describe("SmartExplorerView toolbar controls", () => {
+	it("renders list rows with basename and persistent parent-path identity", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("projects/roadmap.md", "md")],
+			getFolderPaths: () => ["projects"],
+		};
+		view.viewMode = "list";
+
+		view.renderList();
+
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+		const identity = list.querySelector<HTMLElement>(".smart-explorer-row-identity")!;
+		expect(list.classList.contains("is-list-view")).toBe(true);
+		expect(list.classList.contains("is-tree-view")).toBe(false);
+		expect(identity.querySelector(".smart-explorer-row-name")?.textContent).toBe("roadmap");
+		expect(identity.querySelector(".smart-explorer-row-parent")?.textContent).toBe("projects");
+		expect(identity.querySelector(".smart-explorer-row-date")).not.toBeNull();
+	});
+
+	it("renders singular file counts in the toolbar and tree folders", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("notes/one.md", "md")],
+			getFolderPaths: () => ["notes"],
+		};
+		view.viewMode = "tree";
+
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("1 file");
+		expect(container.querySelector(".smart-explorer-tree-count")?.textContent).toBe("1 file");
+	});
+
+	it("marks the selected tree folder visibly", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("notes/one.md", "md")],
+			getFolderPaths: () => ["notes"],
+		};
+		view.viewMode = "tree";
+		view.selectedFolderPath = "notes";
+
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-tree-folder-summary")?.classList.contains("is-selected"))
+			.toBe(true);
+	});
+
+	it("distinguishes an empty vault without offering a clear action", () => {
+		const { view, container } = makeView();
+		view.fileIndex = { getAll: () => [], getFolderPaths: () => [] };
+
+		view.renderList();
+
+		const empty = container.querySelector<HTMLElement>(".smart-explorer-empty")!;
+		expect(empty.textContent).toBe("No files in vault.");
+		expect(empty.getAttribute("role")).toBe("status");
+		expect(empty.querySelector(".smart-explorer-clear-btn")).toBeNull();
+	});
+
+	it("distinguishes files hidden by extension settings without offering a clear action", () => {
+		const { view, container } = makeView();
+		view.plugin.settings.hiddenExtensions = ["pdf"];
+		view.fileIndex = {
+			getAll: () => [makeRecord("private/report.pdf", "pdf")],
+			getFolderPaths: () => ["private"],
+		};
+
+		view.renderList();
+
+		const empty = container.querySelector<HTMLElement>(".smart-explorer-empty")!;
+		expect(empty.textContent).toBe("All files are hidden by extension settings.");
+		expect(empty.getAttribute("role")).toBe("status");
+		expect(empty.querySelector(".smart-explorer-clear-btn")).toBeNull();
+	});
+
+	it("offers a clear action only when search or filters have no matches", () => {
+		const { view, container } = makeView();
+		view.fileIndex = {
+			getAll: () => [makeRecord("notes/one.md", "md")],
+			getFolderPaths: () => ["notes"],
+		};
+		view.query.searchText = "missing";
+
+		view.renderList();
+
+		const empty = container.querySelector<HTMLElement>(".smart-explorer-empty")!;
+		expect(empty.firstElementChild?.textContent).toBe("No files match the current search or filters.");
+		expect(empty.getAttribute("role")).toBe("status");
+		expect(empty.querySelector(".smart-explorer-clear-btn")).not.toBeNull();
+		expect(container.querySelector(".smart-explorer-file-count")?.textContent).toBe("0 of 1 file");
+	});
+
+	it("renders folder-only vaults as a tree instead of an empty vault", () => {
+		const { view, container } = makeView();
+		view.fileIndex = { getAll: () => [], getFolderPaths: () => ["notes"] };
+		view.viewMode = "tree";
+
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-empty")).toBeNull();
+		expect(container.querySelector(".smart-explorer-tree-folder-summary")?.textContent).toContain("notes");
+	});
+
+	it("shows the file-empty state in list mode without enumerating folders", () => {
+		const { view, container } = makeView();
+		const getFolderPaths = jest.fn(() => ["notes"]);
+		view.fileIndex = { getAll: () => [], getFolderPaths };
+		view.viewMode = "list";
+
+		view.renderList();
+
+		expect(container.querySelector(".smart-explorer-empty")?.textContent).toBe("No files in vault.");
+		expect(getFolderPaths).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["create-note", "File name"],
+		["create-folder", "Folder name"],
+	])("keeps a filtered %s input mounted in its target folder branch", (kind, ariaLabel) => {
+		const { view, container } = makeView();
+		const getFolderPaths = jest.fn(() => ["Archive"]);
+		view.fileIndex = {
+			getAll: () => [makeRecord("Archive/visible.md", "md")],
+			getFolderPaths,
+		};
+		view.viewMode = "tree";
+		view.query.searchText = "missing";
+		view.inlineEdit = { kind, folderPath: "Projects/Atlas", value: "Draft" };
+
+		view.renderList();
+
+		const folders = Array.from(
+			container.querySelectorAll<HTMLElement>(".smart-explorer-tree-folder-summary .smart-explorer-tree-name"),
+			(folder) => folder.textContent,
+		);
+		expect(folders).toEqual(["Projects", "Atlas"]);
+		expect(container.querySelector<HTMLInputElement>(`.smart-explorer-inline-input[aria-label="${ariaLabel}"]`))
+			.not.toBeNull();
+		expect(getFolderPaths).not.toHaveBeenCalled();
+	});
+
 	it("sorts extension options and clears a selection that is no longer available", () => {
 		const { view, container } = makeView();
 		view.query.extension = "pdf";

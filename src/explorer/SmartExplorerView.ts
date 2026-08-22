@@ -7,15 +7,16 @@ import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
 import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder } from "./manualOrder";
-import { formatFileModifiedDate, formatFileParent } from "./fileRow";
+import { formatFileCount, formatFileModifiedDate, formatFileParent, formatVisibleFileCount } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerGroupMode, resolveExplorerViewMode, resolveManualSeedSort } from "./viewMode";
 import { clearSearchAndFilters, hasActiveSearchOrFilters } from "./filterState";
-import { areAllTreeFoldersExpanded, shouldOpenTreeFolder } from "./treeExpansion";
+import { areAllTreeFoldersExpanded, getFolderPathAndAncestors, shouldOpenTreeFolder } from "./treeExpansion";
 import { appendMarkdownExtension, buildCreationPath, buildFileRenamePath, buildSiblingPath, getParentFolderPath, getPathName, resolveCreationFolder } from "./creationPath";
 import { revealPathInContainer } from "./revealPath";
 import { isTouchMovePastThreshold, TOUCH_LONG_PRESS_MS } from "./touchLongPress";
 import { SearchRenderScheduler } from "./searchRenderScheduler";
+import { getListRowHeight } from "./rowHeight";
 import type { ExplorerQuery, FileKind, FileRecord, SortMode, GroupMode, ViewMode } from "../types";
 
 import type SmartExplorerPlugin from "../main";
@@ -662,14 +663,30 @@ export class SmartExplorerView extends ItemView {
 		this.syncExtensionOptions(records);
 
 		const mode = this.resolvedViewMode();
+		this.listContainer.classList.toggle("is-tree-view", mode === "tree");
+		this.listContainer.classList.toggle("is-list-view", mode === "list");
 		const hasFilters = hasActiveSearchOrFilters(this.query);
-		const folderPaths = mode === "tree" && !hasFilters ? this.fileIndex.getFolderPaths() : [];
 		const hasInlineCreate = this.hasInlineCreate();
+		let folderPaths: string[] = [];
+		if (mode === "tree") {
+			folderPaths = hasFilters
+				? getInlineCreateFolderPaths(this.inlineEdit)
+				: this.fileIndex.getFolderPaths();
+		}
 
-		if (records.length === 0 && folderPaths.length === 0 && !hasInlineCreate) {
+		if (allRecords.length === 0 && (mode === "list" || folderPaths.length === 0) && !hasInlineCreate) {
 			this.listContainer.createDiv({
 				cls: "smart-explorer-empty",
 				text: "No files in vault.",
+				attr: { role: "status" },
+			});
+			return;
+		}
+		if (records.length === 0 && allRecords.length > 0 && !hasInlineCreate) {
+			this.listContainer.createDiv({
+				cls: "smart-explorer-empty",
+				text: "All files are hidden by extension settings.",
+				attr: { role: "status" },
 			});
 			return;
 		}
@@ -683,7 +700,8 @@ export class SmartExplorerView extends ItemView {
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
 		if (mode === "tree") {
-			if (displayed === 0 && folderPaths.length === 0 && !hasInlineCreate) {
+			if (displayed === 0 && folderPaths.length === 0 && hasFilters && !hasInlineCreate) {
+				this.updateFileCount(displayed, records.length);
 				this.renderNoMatches();
 				return;
 			}
@@ -703,7 +721,8 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 
-		if (displayed === 0 && !hasInlineCreate) {
+		if (displayed === 0 && hasFilters && !hasInlineCreate) {
+			this.updateFileCount(displayed, records.length);
 			this.renderNoMatches();
 			return;
 		}
@@ -735,7 +754,7 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		if (isManualSort && this.listContainer) {
-			const rowHeight = Platform.isMobile ? 44 : 28;
+			const rowHeight = getListRowHeight(Platform.isMobile);
 			this.dragSortManager = new DragSortManager(this.listContainer, {
 				getRowHeight: () => rowHeight,
 				onReorder: (path, toIndex) => this.handleManualReorder(path, toIndex, sections),
@@ -752,8 +771,8 @@ export class SmartExplorerView extends ItemView {
 
 	private renderNoMatches() {
 		if (!this.listContainer) return;
-		const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty" });
-		empty.createSpan({ text: "No files match your filters." });
+		const empty = this.listContainer.createDiv({ cls: "smart-explorer-empty", attr: { role: "status" } });
+		empty.createSpan({ text: "No files match the current search or filters." });
 		const clearBtn = empty.createEl("button", { text: "Clear filters", cls: "smart-explorer-clear-btn" });
 		clearBtn.addEventListener("click", () => {
 			this.clearSearchAndFilters();
@@ -893,7 +912,7 @@ export class SmartExplorerView extends ItemView {
 			} else {
 				summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
 			}
-			summary.createSpan({ cls: "smart-explorer-tree-count", text: `${countTreeFiles(node)} files` });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: formatFileCount(countTreeFiles(node)) });
 			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
 			summary.addEventListener("mouseleave", () => this.hideTooltip());
 			summary.addEventListener("click", () => {
@@ -949,12 +968,13 @@ export class SmartExplorerView extends ItemView {
 				e.stopPropagation();
 			});
 		}
+		const identity = row.createSpan({ cls: "smart-explorer-row-identity" });
 		if (this.inlineEdit?.kind === "rename-file" && this.inlineEdit.path === record.path) {
-			row.appendChild(this.createInlineEditInput(this.inlineEdit.value, "File name"));
+			identity.appendChild(this.createInlineEditInput(this.inlineEdit.value, "File name"));
 		} else {
-			row.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
+			identity.createSpan({ cls: "smart-explorer-row-name", text: record.basename });
 		}
-		const meta = row.createSpan({ cls: "smart-explorer-row-meta" });
+		const meta = identity.createSpan({ cls: "smart-explorer-row-meta" });
 		meta.createSpan({ cls: "smart-explorer-row-parent", text: formatFileParent(record.parentPath) });
 		meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(record.mtime) });
 		if (record.extension && !record.isMarkdown) {
@@ -1010,7 +1030,7 @@ export class SmartExplorerView extends ItemView {
 
 	private updateFileCount(displayed: number, total: number) {
 		if (!this.fileCountEl) return;
-		this.fileCountEl.setText(displayed === total ? `${total} files` : `${displayed} of ${total} files`);
+		this.fileCountEl.setText(formatVisibleFileCount(displayed, total));
 		const hasFilters = hasActiveSearchOrFilters(this.query);
 		this.clearFiltersBtn?.classList.toggle("is-hidden", !hasFilters);
 		if (this.searchToggleBtn && this.searchRow) {
@@ -1117,10 +1137,8 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private expandFolderAncestors(folderPath: string) {
-		if (!folderPath) return;
-		const parts = folderPath.split("/");
-		for (let i = 0; i < parts.length; i++) {
-			this.treeExpandedPaths.add(parts.slice(0, i + 1).join("/"));
+		for (const path of getFolderPathAndAncestors(folderPath)) {
+			this.treeExpandedPaths.add(path);
 		}
 	}
 
@@ -1598,6 +1616,11 @@ export class SmartExplorerView extends ItemView {
 			await leaf.openFile(file);
 		}
 	}
+}
+
+function getInlineCreateFolderPaths(state: InlineEditState | null): string[] {
+	if (!state || (state.kind !== "create-note" && state.kind !== "create-folder")) return [];
+	return getFolderPathAndAncestors(state.folderPath);
 }
 
 function countTreeFiles(node: ExplorerTreeNode): number {
