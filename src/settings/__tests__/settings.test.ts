@@ -5,6 +5,7 @@ describe("DEFAULT_SETTINGS", () => {
 		expect(DEFAULT_SETTINGS).toMatchObject({
 			defaultSort: "name-asc",
 			defaultGroup: "none",
+			lastViewMode: "tree",
 			hiddenExtensions: [],
 			manualOrder: [],
 		});

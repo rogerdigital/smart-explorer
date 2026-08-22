@@ -61,10 +61,11 @@ function makeView() {
 		settings: {
 			defaultSort: "name-asc",
 			defaultGroup: "none",
+			lastViewMode: "tree",
 			hiddenExtensions: [],
 			manualOrder: [],
 		},
-		saveSettings: jest.fn(),
+		saveSettings: jest.fn().mockResolvedValue(undefined),
 	};
 	const view = new SmartExplorerView({ app } as never, plugin as never) as any;
 	const container = view.containerEl.children[1] as HTMLElement;
@@ -77,6 +78,29 @@ describe("SmartExplorerView DOM foundation", () => {
 		requestAnimationFrame?: typeof requestAnimationFrame;
 		cancelAnimationFrame?: typeof cancelAnimationFrame;
 	};
+
+	it("uses the last view mode for each newly opened leaf", () => {
+		const { view } = makeView();
+		view.plugin.settings.lastViewMode = "list";
+		const nextView = new SmartExplorerView({ app: view.app } as never, view.plugin as never) as any;
+
+		expect(nextView.viewMode).toBe("list");
+	});
+
+	it("persists a user toggle without changing another open leaf", async () => {
+		const first = makeView();
+		const second = new SmartExplorerView({ app: first.view.app } as never, first.view.plugin as never) as any;
+		const secondContainer = second.containerEl.children[1] as HTMLElement;
+		second.renderShell(secondContainer);
+
+		(first.container.querySelector(".smart-explorer-view-mode") as HTMLButtonElement).click();
+		await Promise.resolve();
+
+		expect(first.view.viewMode).toBe("list");
+		expect(second.viewMode).toBe("tree");
+		expect(first.view.plugin.settings.lastViewMode).toBe("list");
+		expect(first.view.plugin.saveSettings).toHaveBeenCalledTimes(1);
+	});
 
 	it("applies current Obsidian element info fields used by the explorer", () => {
 		const parent = globalThis.createDiv({ cls: "form-shell" });

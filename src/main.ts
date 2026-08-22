@@ -1,9 +1,9 @@
 import { Plugin } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "./constants";
 import { SmartExplorerView } from "./explorer/SmartExplorerView";
-import { DEFAULT_SETTINGS } from "./settings/settings";
 import { SmartExplorerSettingTab } from "./settings/settings-tab";
 import type { SmartExplorerSettings } from "./settings/settings";
+import { normalizeSettings } from "./settings/settings-normalization";
 
 export default class SmartExplorerPlugin extends Plugin {
 	settings!: SmartExplorerSettings;
@@ -53,12 +53,17 @@ export default class SmartExplorerPlugin extends Plugin {
 	onunload() {}
 
 	async loadSettings() {
-		const saved = await this.loadData() as Partial<SmartExplorerSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+		this.settings = normalizeSettings(await this.loadData());
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	refreshExplorerViews() {
+		for (const leaf of this.app.workspace.getLeavesOfType(SMART_EXPLORER_VIEW_TYPE)) {
+			if (leaf.view instanceof SmartExplorerView) leaf.view.refreshSettingsProjection();
+		}
 	}
 
 	async activateView(): Promise<SmartExplorerView | null> {

@@ -60,7 +60,7 @@ export class SmartExplorerView extends ItemView {
 	private plugin: SmartExplorerPlugin;
 	private fileIndex: FileIndex;
 	private query: ExplorerQuery;
-	private viewMode: ViewMode = "tree";
+	private viewMode: ViewMode;
 	private listContainer: HTMLElement | null = null;
 	private viewModeBtn: HTMLButtonElement | null = null;
 	private newNoteBtn: HTMLButtonElement | null = null;
@@ -103,6 +103,7 @@ export class SmartExplorerView extends ItemView {
 		this.plugin = plugin;
 		this.fileIndex = new FileIndex(this.app);
 		const settings = this.plugin.settings;
+		this.viewMode = settings.lastViewMode;
 		this.manualSeedSort = settings.defaultSort === "manual" ? "name-asc" : settings.defaultSort;
 		this.query = {
 			searchText: "",
@@ -256,6 +257,10 @@ export class SmartExplorerView extends ItemView {
 		}, 300);
 	}
 
+	refreshSettingsProjection() {
+		this.renderList();
+	}
+
 	private renderToolbar(container: HTMLElement) {
 		const toolbar = container.createDiv({ cls: "smart-explorer-toolbar" });
 
@@ -267,6 +272,10 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.addEventListener("mouseleave", () => this.hideTooltip());
 		this.viewModeBtn.addEventListener("click", () => {
 			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
+			this.plugin.settings.lastViewMode = this.viewMode;
+			void this.plugin.saveSettings().catch((error) => {
+				new Notice(`Could not save view mode: ${error instanceof Error ? error.message : String(error)}`);
+			});
 			this.renderList();
 		});
 		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", "Sort order", (v) => {

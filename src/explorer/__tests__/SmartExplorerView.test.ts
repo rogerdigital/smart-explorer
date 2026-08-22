@@ -76,6 +76,21 @@ describe("SmartExplorerView search state", () => {
 	});
 });
 
+describe("SmartExplorerView settings projection", () => {
+	it("rerenders without replacing leaf-local mode, sort, or group", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.viewMode = "list";
+		view.query = { sort: "size", group: "extension" };
+		view.renderList = jest.fn();
+
+		view.refreshSettingsProjection();
+
+		expect(view.viewMode).toBe("list");
+		expect(view.query).toMatchObject({ sort: "size", group: "extension" });
+		expect(view.renderList).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("SmartExplorerView reveal state", () => {
 	it("clears blocking filters and switches to tree mode before reveal", () => {
 		const view = Object.create(SmartExplorerView.prototype) as any;
