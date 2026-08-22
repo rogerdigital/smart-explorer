@@ -925,7 +925,7 @@ git commit -m "fix: validate and refresh explorer settings"
 
 PR title: `fix: improve explorer correctness and narrow-pane clarity`
 
-Execution note (2026-08-22): `npm run verify` passed (25 Jest suites / 181 tests, plus 6 release tests). Real Obsidian validation completed in dark theme at 300px, approximately 520px, and 600px widths. Light-theme validation and the combined Non-Markdown + extension filter remain pending the main flow completion.
+Execution note (2026-08-22): `npm run verify` passed (25 Jest suites / 181 tests, plus 6 release tests). Real Obsidian validation completed in dark theme at 300px, approximately 520px, and 600px widths, plus a light-theme pass for control, text, and selected-row contrast. The Non-Markdown filter returned 19 of 238 files, combining it with `.canvas` returned the expected single canvas file, and whitespace-only search preserved the filtered result. The test vault was returned to its original dark theme and cleared filter state after verification.
 
 ---
 
