@@ -35,8 +35,6 @@ describe("normalizeFileRecord", () => {
 		expect(record.extension).toBe("md");
 		expect(record.parentPath).toBe("notes");
 		expect(record.isMarkdown).toBe(true);
-		expect(record.isAttachment).toBe(false);
-		expect(record.tags).toEqual([]);
 	});
 
 	it("normalizes an image file", () => {
@@ -44,13 +42,6 @@ describe("normalizeFileRecord", () => {
 		const record = normalizeFileRecord(file, null);
 		expect(record.extension).toBe("png");
 		expect(record.isMarkdown).toBe(false);
-		expect(record.isAttachment).toBe(true);
-	});
-
-	it("normalizes a PDF file", () => {
-		const file = mockTFile({ path: "docs/paper.pdf", extension: "pdf" });
-		const record = normalizeFileRecord(file, null);
-		expect(record.isAttachment).toBe(true);
 	});
 
 	it("normalizes a root-level file", () => {
@@ -65,19 +56,23 @@ describe("normalizeFileRecord", () => {
 		expect(record.parentPath).toBe("");
 	});
 
-	it("extracts metadata from cache for markdown files", () => {
+	it("does not read metadata cache for markdown files", () => {
 		const file = mockTFile({ path: "notes/tagged.md" });
 		const mockCache: any = {
-			getFileCache: () => ({
-				frontmatter: { status: "draft" },
-				tags: [{ tag: "research" }, { tag: "important" }],
-				headings: [{ heading: "Introduction", level: 1 }],
-			}),
+			getFileCache: jest.fn(),
 		};
 		const record = normalizeFileRecord(file, mockCache);
-		expect(record.frontmatter).toEqual({ status: "draft" });
-		expect(record.tags).toEqual(["research", "important"]);
-		expect(record.firstHeading).toBe("Introduction");
+		expect(record).toEqual({
+			path: "notes/tagged.md",
+			basename: "tagged",
+			extension: "md",
+			parentPath: "notes",
+			size: 1024,
+			ctime: 1700000000000,
+			mtime: 1700000000000,
+			isMarkdown: true,
+		});
+		expect(mockCache.getFileCache).not.toHaveBeenCalled();
 	});
 
 	it("handles missing cache gracefully", () => {
@@ -86,9 +81,16 @@ describe("normalizeFileRecord", () => {
 			getFileCache: () => null,
 		};
 		const record = normalizeFileRecord(file, mockCache);
-		expect(record.frontmatter).toBeUndefined();
-		expect(record.tags).toEqual([]);
-		expect(record.firstHeading).toBeUndefined();
+		expect(record).toEqual({
+			path: "notes/empty.md",
+			basename: "empty",
+			extension: "md",
+			parentPath: "notes",
+			size: 1024,
+			ctime: 1700000000000,
+			mtime: 1700000000000,
+			isMarkdown: true,
+		});
 	});
 
 	it("skips metadata cache for non-markdown files", () => {
@@ -100,41 +102,12 @@ describe("normalizeFileRecord", () => {
 		expect(mockCache.getFileCache).not.toHaveBeenCalled();
 	});
 
-	it("strips # prefix from tags", () => {
-		const file = mockTFile({ path: "notes/tagged.md" });
-		const mockCache: any = {
-			getFileCache: () => ({
-				tags: [{ tag: "#project" }, { tag: "#todo" }],
-			}),
-		};
-		const record = normalizeFileRecord(file, mockCache);
-		expect(record.tags).toEqual(["project", "todo"]);
-	});
-
-	it("handles tags without # prefix", () => {
-		const file = mockTFile({ path: "notes/tagged.md" });
-		const mockCache: any = {
-			getFileCache: () => ({
-				tags: [{ tag: "plain" }],
-			}),
-		};
-		const record = normalizeFileRecord(file, mockCache);
-		expect(record.tags).toEqual(["plain"]);
-	});
-
-	it("recognizes webp as attachment", () => {
-		const file = mockTFile({ path: "img/photo.webp", extension: "webp" });
-		const record = normalizeFileRecord(file, null);
-		expect(record.isAttachment).toBe(true);
-	});
-
 	it("handles file with no extension", () => {
 		const file = mockTFile({ path: "Makefile", extension: "" });
 		file.basename = "Makefile";
 		const record = normalizeFileRecord(file, null);
 		expect(record.extension).toBe("");
 		expect(record.isMarkdown).toBe(false);
-		expect(record.isAttachment).toBe(false);
 	});
 
 	it("handles file with special characters in name", () => {

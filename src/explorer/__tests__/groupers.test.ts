@@ -11,8 +11,6 @@ function makeRecord(path: string, mtime?: number): FileRecord {
 		ctime: 1700000000000,
 		mtime: mtime ?? 1700000000000,
 		isMarkdown: path.endsWith(".md"),
-		isAttachment: false,
-		tags: [],
 	};
 }
 

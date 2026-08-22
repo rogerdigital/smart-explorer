@@ -1,14 +1,17 @@
 import type { ExplorerQuery, FileRecord } from "../types";
+import { normalizeSearchText } from "./queryNormalization";
 
 const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
 
 export function applyFilters(records: FileRecord[], query: ExplorerQuery): FileRecord[] {
 	let result = records;
+	const normalizedSearchText = normalizeSearchText(query.searchText);
 
-	if (query.searchText) {
-		const lower = query.searchText.toLowerCase();
+	if (normalizedSearchText) {
 		result = result.filter(
-			(r) => r.basename.toLowerCase().includes(lower) || r.path.toLowerCase().includes(lower),
+			(r) =>
+				r.basename.toLowerCase().includes(normalizedSearchText) ||
+				r.path.toLowerCase().includes(normalizedSearchText),
 		);
 	}
 
@@ -20,8 +23,8 @@ export function applyFilters(records: FileRecord[], query: ExplorerQuery): FileR
 		result = result.filter((r) => r.isMarkdown);
 	}
 
-	if (query.fileKind === "attachments") {
-		result = result.filter((r) => r.isAttachment);
+	if (query.fileKind === "non-markdown") {
+		result = result.filter((r) => !r.isMarkdown);
 	}
 
 	if (query.fileKind === "images") {

@@ -31,7 +31,7 @@ const MODIFIED_RANGE_OPTIONS: { value: string; text: string; days: number | null
 const FILE_KIND_OPTIONS: { value: FileKind; text: string }[] = [
 	{ value: "all", text: "All" },
 	{ value: "markdown", text: "Markdown" },
-	{ value: "attachments", text: "Attachments" },
+	{ value: "non-markdown", text: "Non-Markdown" },
 	{ value: "images", text: "Images" },
 ];
 

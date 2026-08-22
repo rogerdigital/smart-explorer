@@ -344,9 +344,11 @@ Create `queryNormalization.ts`:
 
 ```ts
 export function normalizeSearchText(value: string): string {
-	return value.trim().toLocaleLowerCase();
+	return value.trim().toLowerCase();
 }
 ```
+
+Technical-path search uses locale-independent case folding so the same ASCII path matches in every system locale.
 
 Use it in both `filters.ts` and `filterState.ts`:
 
@@ -354,8 +356,8 @@ Use it in both `filters.ts` and `filterState.ts`:
 const searchText = normalizeSearchText(query.searchText);
 if (searchText) {
 	result = result.filter((record) =>
-		record.basename.toLocaleLowerCase().includes(searchText) ||
-		record.path.toLocaleLowerCase().includes(searchText),
+		record.basename.toLowerCase().includes(searchText) ||
+		record.path.toLowerCase().includes(searchText),
 	);
 }
 ```

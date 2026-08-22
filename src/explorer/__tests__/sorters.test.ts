@@ -10,8 +10,6 @@ function makeRecord(overrides: Partial<FileRecord> & { path: string }): FileReco
 		ctime: 1700000000000,
 		mtime: 1700000000000,
 		isMarkdown: overrides.path.endsWith(".md"),
-		isAttachment: false,
-		tags: [],
 		...overrides,
 	};
 }

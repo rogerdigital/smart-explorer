@@ -14,7 +14,7 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 | **Create** | Create notes and folders via toolbar, context menu, or command palette — with inline name editing |
 | **Edit** | Rename files inline; extensions stay fixed so only the name changes |
 | **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual drag order |
-| **Filter** | Search by name/path, file kind (all / markdown / attachments / images), date range (1d / 7d / 30d) |
+| **Filter** | Search by name/path, file kind (all / markdown / non-markdown / images), date range (1d / 7d / 30d) |
 | **View** | Tree/list toggle; Manual sort automatically uses list mode for direct drag-and-drop |
 | **Commands** | Open, focus search, reveal active file, new note, new folder — all in the Command Palette |
 | **Keyboard** | Focus search, clear search, move through rows, and open selected files |
