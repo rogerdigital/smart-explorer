@@ -894,12 +894,14 @@ Do not replace the current view mode, query sort, or query group when settings r
 
 - [x] **Step 4: Refresh open views after relevant settings changes**
 
-After hidden-extension save and manual-order reset:
+After hidden-extension save:
 
 ```ts
 await this.plugin.saveSettings();
 this.plugin.refreshExplorerViews();
 ```
+
+After manual-order reset, save successfully and call `resetExplorerManualOrderViews()`. That helper refreshes open leaves and clears each view's undo stack so a reset cannot be undone from stale view state.
 
 Change the default sort/group descriptions to `Used when a new Smart Explorer view opens.` so users understand that existing views are unchanged.
 
