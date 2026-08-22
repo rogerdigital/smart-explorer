@@ -47,6 +47,28 @@ describe("SmartExplorerView manual-order state", () => {
 
 		expect(view.scheduleSaveOrder).not.toHaveBeenCalled();
 	});
+
+	it("clears reset undo history, disables Undo, and prevents restoring old order", () => {
+		const view = makeBareView([]);
+		view.query = { sort: "manual" };
+		view.manualOrderUndoStack = [["old-a.md", "old-b.md"]];
+		view.manualUndoBtn = {
+			classList: { toggle: jest.fn() },
+			disabled: false,
+		};
+		view.listContainer = null;
+		view.manualHintEl = null;
+		view.renderList = jest.fn();
+
+		view.resetManualOrderState();
+		view.undoManualReorder();
+
+		expect(view.manualOrderUndoStack).toEqual([]);
+		expect(view.manualUndoBtn.disabled).toBe(true);
+		expect(view.renderList).toHaveBeenCalledTimes(1);
+		expect(view.plugin.settings.manualOrder).toEqual([]);
+		expect(view.scheduleSaveOrder).not.toHaveBeenCalled();
+	});
 });
 
 describe("SmartExplorerView search state", () => {
@@ -81,12 +103,14 @@ describe("SmartExplorerView settings projection", () => {
 		const view = Object.create(SmartExplorerView.prototype) as any;
 		view.viewMode = "list";
 		view.query = { sort: "size", group: "extension" };
+		view.manualOrderUndoStack = [["a.md"]];
 		view.renderList = jest.fn();
 
 		view.refreshSettingsProjection();
 
 		expect(view.viewMode).toBe("list");
 		expect(view.query).toMatchObject({ sort: "size", group: "extension" });
+		expect(view.manualOrderUndoStack).toEqual([["a.md"]]);
 		expect(view.renderList).toHaveBeenCalledTimes(1);
 	});
 });

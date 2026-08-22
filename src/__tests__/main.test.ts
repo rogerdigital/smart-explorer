@@ -76,6 +76,30 @@ describe("SmartExplorerPlugin", () => {
 		expect(otherView.refreshSettingsProjection).not.toHaveBeenCalled();
 	});
 
+	it("resets manual-order state in every open Smart Explorer view", () => {
+		const first = Object.create(SmartExplorerView.prototype) as SmartExplorerView;
+		const second = Object.create(SmartExplorerView.prototype) as SmartExplorerView;
+		(first as any).resetManualOrderState = jest.fn();
+		(second as any).resetManualOrderState = jest.fn();
+		const otherView = { resetManualOrderState: jest.fn() };
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).app = {
+			workspace: {
+				getLeavesOfType: jest.fn().mockReturnValue([
+					{ view: first },
+					{ view: second },
+					{ view: otherView },
+				]),
+			},
+		};
+
+		plugin.resetExplorerManualOrderViews();
+
+		expect((first as any).resetManualOrderState).toHaveBeenCalledTimes(1);
+		expect((second as any).resetManualOrderState).toHaveBeenCalledTimes(1);
+		expect(otherView.resetManualOrderState).not.toHaveBeenCalled();
+	});
+
 	it("registers command palette actions for core explorer workflows", async () => {
 		const commands: { id: string; name: string }[] = [];
 		const plugin = new SmartExplorerPlugin({} as any, {} as any);

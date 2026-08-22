@@ -261,6 +261,12 @@ export class SmartExplorerView extends ItemView {
 		this.renderList();
 	}
 
+	resetManualOrderState() {
+		this.manualOrderUndoStack = [];
+		this.updateManualOrderControls();
+		this.renderList();
+	}
+
 	private renderToolbar(container: HTMLElement) {
 		const toolbar = container.createDiv({ cls: "smart-explorer-toolbar" });
 

@@ -74,6 +74,7 @@ describe("SmartExplorerSettingTab", () => {
 			settings: { hiddenExtensions: [], manualOrder: [] },
 			saveSettings: jest.fn(() => new Promise<void>((resolve) => { finishSave = resolve; })),
 			refreshExplorerViews: jest.fn(),
+			resetExplorerManualOrderViews: jest.fn(),
 		};
 		const tab = new SmartExplorerSettingTab({} as any, plugin as any);
 		const setting = { addText: (build: any) => build({
@@ -92,6 +93,7 @@ describe("SmartExplorerSettingTab", () => {
 
 		expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
 		expect(plugin.refreshExplorerViews).toHaveBeenCalledTimes(1);
+		expect(plugin.resetExplorerManualOrderViews).not.toHaveBeenCalled();
 		jest.useRealTimers();
 	});
 
@@ -102,6 +104,7 @@ describe("SmartExplorerSettingTab", () => {
 			settings: { hiddenExtensions: [], manualOrder: [] },
 			saveSettings: jest.fn().mockRejectedValue(new Error("disk full")),
 			refreshExplorerViews: jest.fn(),
+			resetExplorerManualOrderViews: jest.fn(),
 		};
 		const tab = new SmartExplorerSettingTab({} as any, plugin as any);
 		const setting = { addText: (build: any) => build({
@@ -117,6 +120,7 @@ describe("SmartExplorerSettingTab", () => {
 		await Promise.resolve();
 
 		expect(plugin.refreshExplorerViews).not.toHaveBeenCalled();
+		expect(plugin.resetExplorerManualOrderViews).not.toHaveBeenCalled();
 		jest.useRealTimers();
 	});
 
@@ -125,6 +129,7 @@ describe("SmartExplorerSettingTab", () => {
 			settings: { hiddenExtensions: [], manualOrder: ["a"] },
 			saveSettings: jest.fn().mockRejectedValue(new Error("disk full")),
 			refreshExplorerViews: jest.fn(),
+			resetExplorerManualOrderViews: jest.fn(),
 		};
 		const button = makeButton();
 		const tab = new SmartExplorerSettingTab({} as any, plugin as any);
@@ -135,6 +140,7 @@ describe("SmartExplorerSettingTab", () => {
 		await Promise.resolve();
 
 		expect(plugin.refreshExplorerViews).not.toHaveBeenCalled();
+		expect(plugin.resetExplorerManualOrderViews).not.toHaveBeenCalled();
 		expect(button.setButtonText).not.toHaveBeenCalledWith("Done!");
 	});
 
@@ -145,19 +151,21 @@ describe("SmartExplorerSettingTab", () => {
 			settings: { hiddenExtensions: [], manualOrder: ["a"] },
 			saveSettings: jest.fn(() => new Promise<void>((resolve) => { finishSave = resolve; })),
 			refreshExplorerViews: jest.fn(),
+			resetExplorerManualOrderViews: jest.fn(),
 		};
 		const button = makeButton();
 		const tab = new SmartExplorerSettingTab({} as any, plugin as any);
 		(tab as any).addResetManualOrderControl({ addButton: (build: any) => build(button) });
 
 		button.click?.();
-		expect(plugin.refreshExplorerViews).not.toHaveBeenCalled();
+		expect(plugin.resetExplorerManualOrderViews).not.toHaveBeenCalled();
 		finishSave();
 		await Promise.resolve();
 		await Promise.resolve();
 
 		expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
-		expect(plugin.refreshExplorerViews).toHaveBeenCalledTimes(1);
+		expect(plugin.resetExplorerManualOrderViews).toHaveBeenCalledTimes(1);
+		expect(plugin.refreshExplorerViews).not.toHaveBeenCalled();
 		expect(button.setButtonText).toHaveBeenCalledWith("Done!");
 		jest.useRealTimers();
 	});

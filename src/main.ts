@@ -66,6 +66,12 @@ export default class SmartExplorerPlugin extends Plugin {
 		}
 	}
 
+	resetExplorerManualOrderViews() {
+		for (const leaf of this.app.workspace.getLeavesOfType(SMART_EXPLORER_VIEW_TYPE)) {
+			if (leaf.view instanceof SmartExplorerView) leaf.view.resetManualOrderState();
+		}
+	}
+
 	async activateView(): Promise<SmartExplorerView | null> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(SMART_EXPLORER_VIEW_TYPE)[0];

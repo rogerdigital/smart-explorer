@@ -119,7 +119,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			btn.setButtonText("Reset").onClick(() => {
 				this.plugin.settings.manualOrder = [];
 				void this.plugin.saveSettings().then(() => {
-					this.plugin.refreshExplorerViews();
+					this.plugin.resetExplorerManualOrderViews();
 					btn.setButtonText("Done!");
 					window.setTimeout(() => { btn.setButtonText("Reset"); }, 1500);
 				}).catch(() => {});
