@@ -1,6 +1,75 @@
 /** @jest-environment jsdom */
 
+jest.mock(
+	"obsidian",
+	() => ({
+		ItemView: class {
+			app: unknown;
+			containerEl: HTMLElement;
+
+			constructor(leaf: { app: unknown }) {
+				this.app = leaf.app;
+				this.containerEl = document.createElement("div");
+				this.containerEl.append(document.createElement("div"), document.createElement("div"));
+			}
+
+			registerEvent() {}
+		},
+		Menu: class {},
+		Modal: class {},
+		Notice: class {},
+		Platform: { isMobile: false },
+		Setting: class {},
+		setIcon: jest.fn(),
+		TFile: class {},
+		TFolder: class {},
+		WorkspaceLeaf: class {},
+	}),
+	{ virtual: true },
+);
+
 import { installObsidianDomShim, mockElementBox } from "../../test-utils/obsidianDom";
+import type { FileRecord } from "../../types";
+import { SmartExplorerView } from "../SmartExplorerView";
+
+function makeRecord(path: string, extension: string): FileRecord {
+	return {
+		path,
+		basename: path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? path,
+		extension,
+		parentPath: "",
+		size: 1,
+		ctime: 1,
+		mtime: 1,
+		isMarkdown: extension === "md",
+	};
+}
+
+function makeView() {
+	(globalThis as typeof globalThis & { activeWindow: Window }).activeWindow = window;
+	const app = {
+		vault: {
+			getAllLoadedFiles: () => [],
+			getAbstractFileByPath: () => null,
+		},
+		workspace: { getActiveFile: () => null },
+		metadataCache: {},
+	};
+	const plugin = {
+		app,
+		settings: {
+			defaultSort: "name-asc",
+			defaultGroup: "none",
+			hiddenExtensions: [],
+			manualOrder: [],
+		},
+		saveSettings: jest.fn(),
+	};
+	const view = new SmartExplorerView({ app } as never, plugin as never) as any;
+	const container = view.containerEl.children[1] as HTMLElement;
+	view.renderShell(container);
+	return { view, container };
+}
 
 describe("SmartExplorerView DOM foundation", () => {
 	type OptionalAnimationGlobals = typeof globalThis & {
@@ -132,5 +201,152 @@ describe("SmartExplorerView DOM foundation", () => {
 			else Reflect.deleteProperty(animationGlobals, "cancelAnimationFrame");
 			jest.useRealTimers();
 		}
+	});
+});
+
+describe("SmartExplorerView toolbar controls", () => {
+	it("sorts extension options and clears a selection that is no longer available", () => {
+		const { view, container } = makeView();
+		view.query.extension = "pdf";
+
+		view.syncExtensionOptions([
+			makeRecord("z.png", "png"),
+			makeRecord("a.md", "md"),
+			makeRecord("duplicate.md", "md"),
+			makeRecord("empty", ""),
+			makeRecord("report.pdf", "pdf"),
+			makeRecord("v10.v10", "v10"),
+			makeRecord("v2.v2", "v2"),
+		]);
+
+		const select = container.querySelector<HTMLSelectElement>(".smart-explorer-extension")!;
+		expect(Array.from(select.options, (option) => [option.value, option.text])).toEqual([
+			["", "All extensions"],
+			["md", ".md"],
+			["pdf", ".pdf"],
+			["png", ".png"],
+			["v2", ".v2"],
+			["v10", ".v10"],
+		]);
+		expect(select.value).toBe("pdf");
+		view.updateFileCount(1, 2);
+		expect(container.querySelector(".smart-explorer-filter-toggle")?.classList.contains("is-active")).toBe(true);
+
+		view.syncExtensionOptions([makeRecord("a.md", "md")]);
+
+		expect(view.query.extension).toBeNull();
+		expect(select.value).toBe("");
+		expect(container.querySelector(".smart-explorer-filter-toggle")?.classList.contains("is-active")).toBe(false);
+	});
+
+	it("keeps extension filtering when the file kind changes", () => {
+		const { view, container } = makeView();
+		view.renderList = jest.fn();
+		view.syncExtensionOptions([makeRecord("report.pdf", "pdf")]);
+		const extension = container.querySelector<HTMLSelectElement>(".smart-explorer-extension")!;
+		const kind = container.querySelector<HTMLSelectElement>(".smart-explorer-kind")!;
+
+		extension.value = "pdf";
+		extension.dispatchEvent(new Event("change"));
+		kind.value = "non-markdown";
+		kind.dispatchEvent(new Event("change"));
+
+		expect(view.query.extension).toBe("pdf");
+		expect(view.query.fileKind).toBe("non-markdown");
+		expect(view.renderList).toHaveBeenCalledTimes(2);
+	});
+
+	it("syncs extensions after hidden-extension projection and before filtering records", () => {
+		const { view, container } = makeView();
+		view.plugin.settings.hiddenExtensions = ["pdf"];
+		view.fileIndex = {
+			getAll: () => [makeRecord("visible.md", "md"), makeRecord("hidden.pdf", "pdf")],
+			getFolderPaths: () => [],
+		};
+		view.viewMode = "list";
+		view.query.extension = "pdf";
+
+		view.renderList();
+
+		const extension = container.querySelector<HTMLSelectElement>(".smart-explorer-extension")!;
+		expect(Array.from(extension.options, (option) => option.value)).toEqual(["", "md"]);
+		expect(view.query.extension).toBeNull();
+		expect(container.querySelector<HTMLElement>('[data-path="visible.md"]')).not.toBeNull();
+		expect(container.querySelector<HTMLElement>('[data-path="hidden.pdf"]')).toBeNull();
+	});
+
+	it("gives every select an accessible label", () => {
+		const { container } = makeView();
+
+		expect(Array.from(container.querySelectorAll("select"), (select) => select.getAttribute("aria-label")))
+			.toEqual(["Sort order", "Group files", "File kind", "File extension", "Modified date"]);
+	});
+
+	it("keeps disclosure labels, expanded state, and active state in sync", () => {
+		const { view, container } = makeView();
+		view.renderList = jest.fn();
+		const searchButton = container.querySelector<HTMLButtonElement>(".smart-explorer-search-toggle")!;
+		const filterButton = container.querySelector<HTMLButtonElement>(".smart-explorer-filter-toggle")!;
+		const searchPanel = container.querySelector<HTMLElement>(".smart-explorer-search-row")!;
+		const filterPanel = container.querySelector<HTMLElement>(".smart-explorer-toolbar-filters")!;
+
+		expect(searchButton.getAttribute("aria-label")).toBe("Show search");
+		expect(searchButton.getAttribute("aria-expanded")).toBe("false");
+		expect(filterButton.getAttribute("aria-label")).toBe("Show filters");
+		expect(filterButton.getAttribute("aria-expanded")).toBe("false");
+
+		searchButton.click();
+		expect(searchPanel.classList.contains("is-collapsed")).toBe(false);
+		expect(searchButton.getAttribute("aria-label")).toBe("Hide search");
+		expect(searchButton.getAttribute("aria-expanded")).toBe("true");
+		expect(searchButton.classList.contains("is-active")).toBe(true);
+
+		searchButton.click();
+		view.query.searchText = "needle";
+		view.updateFileCount(1, 2);
+		expect(searchButton.getAttribute("aria-label")).toBe("Show search");
+		expect(searchButton.getAttribute("aria-expanded")).toBe("false");
+		expect(searchButton.classList.contains("is-active")).toBe(true);
+
+		filterButton.click();
+		expect(filterPanel.classList.contains("is-collapsed")).toBe(false);
+		expect(filterButton.getAttribute("aria-label")).toBe("Hide filters");
+		expect(filterButton.getAttribute("aria-expanded")).toBe("true");
+
+		container.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(searchButton.classList.contains("is-active")).toBe(false);
+		container.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(filterPanel.classList.contains("is-collapsed")).toBe(true);
+		expect(filterButton.getAttribute("aria-label")).toBe("Show filters");
+		expect(filterButton.getAttribute("aria-expanded")).toBe("false");
+
+		view.query.fileKind = "images";
+		view.rebuildView();
+		const rebuiltButton = container.querySelector<HTMLButtonElement>(".smart-explorer-filter-toggle")!;
+		expect(rebuiltButton.getAttribute("aria-label")).toBe("Show filters");
+		expect(rebuiltButton.getAttribute("aria-expanded")).toBe("false");
+		expect(rebuiltButton.classList.contains("is-active")).toBe(true);
+	});
+
+	it("uses unique panel IDs for every view instance", () => {
+		const first = makeView().container;
+		const second = makeView().container;
+		const panels = [
+			first.querySelector<HTMLElement>(".smart-explorer-search-row")!,
+			first.querySelector<HTMLElement>(".smart-explorer-toolbar-filters")!,
+			second.querySelector<HTMLElement>(".smart-explorer-search-row")!,
+			second.querySelector<HTMLElement>(".smart-explorer-toolbar-filters")!,
+		];
+		const buttons = [
+			first.querySelector<HTMLButtonElement>(".smart-explorer-search-toggle")!,
+			first.querySelector<HTMLButtonElement>(".smart-explorer-filter-toggle")!,
+			second.querySelector<HTMLButtonElement>(".smart-explorer-search-toggle")!,
+			second.querySelector<HTMLButtonElement>(".smart-explorer-filter-toggle")!,
+		];
+
+		expect(new Set(panels.map((panel) => panel.id)).size).toBe(4);
+		expect(panels.every((panel) => panel.id.length > 0)).toBe(true);
+		expect(buttons.map((button) => button.getAttribute("aria-controls")))
+			.toEqual(panels.map((panel) => panel.id));
 	});
 });
