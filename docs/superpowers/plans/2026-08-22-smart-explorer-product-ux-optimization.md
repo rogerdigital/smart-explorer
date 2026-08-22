@@ -106,7 +106,7 @@ Do not start PR 2 until PR 1 is merged. Do not start PR 3 until the final row st
 - Modify: `package.json`
 - Modify: `package-lock.json`
 
-- [ ] **Step 1: Install the Jest 29 jsdom environment without changing the global environment**
+- [x] **Step 1: Install the Jest 29 jsdom environment without changing the global environment**
 
 Run:
 
@@ -116,7 +116,7 @@ npm install --save-dev jest-environment-jsdom@^29.7.0
 
 Expected: `package.json` and `package-lock.json` add `jest-environment-jsdom`; `jest.config.cjs` remains `testEnvironment: "node"` so existing pure tests keep their current runtime boundary.
 
-- [ ] **Step 2: Add Obsidian DOM and deterministic-layout shims**
+- [x] **Step 2: Add Obsidian DOM and deterministic-layout shims**
 
 Create `src/test-utils/obsidianDom.ts`:
 
@@ -229,7 +229,7 @@ export function mockElementBox(
 }
 ```
 
-- [ ] **Step 3: Add a DOM-environment smoke test**
+- [x] **Step 3: Add a DOM-environment smoke test**
 
 Start `SmartExplorerView.dom.test.ts` with:
 
@@ -255,7 +255,7 @@ describe("Obsidian DOM test foundation", () => {
 });
 ```
 
-- [ ] **Step 4: Run Node and jsdom suites together**
+- [x] **Step 4: Run Node and jsdom suites together**
 
 Run:
 
@@ -265,7 +265,7 @@ npm test -- --runInBand src/explorer/__tests__/filters.test.ts src/explorer/__te
 
 Expected: the existing Node suite and new jsdom suite both pass without changing `jest.config.cjs`.
 
-- [ ] **Step 5: Commit the test foundation**
+- [x] **Step 5: Commit the test foundation**
 
 ```bash
 git add package.json package-lock.json src/test-utils/obsidianDom.ts src/explorer/__tests__/SmartExplorerView.dom.test.ts
@@ -285,7 +285,7 @@ git commit -m "test: add explorer DOM test foundation"
 - Modify: `src/explorer/__tests__/FileIndex.test.ts`
 - Modify: `src/types.ts:19-45`
 
-- [ ] **Step 1: Add failing normalization and non-Markdown filter tests**
+- [x] **Step 1: Add failing normalization and non-Markdown filter tests**
 
 Create `queryNormalization.test.ts`:
 
@@ -328,7 +328,7 @@ it("treats every non-Markdown format as Non-Markdown without calling it an attac
 });
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the regressions fail**
+- [x] **Step 2: Run the focused tests and verify the regressions fail**
 
 Run:
 
@@ -338,7 +338,7 @@ npm test -- --runInBand src/explorer/__tests__/queryNormalization.test.ts src/ex
 
 Expected: the new module and `non-markdown` kind are missing, and whitespace search returns no records.
 
-- [ ] **Step 3: Add the shared normalization helper**
+- [x] **Step 3: Add the shared normalization helper**
 
 Create `queryNormalization.ts`:
 
@@ -366,7 +366,7 @@ if (searchText) {
 normalizeSearchText(query.searchText).length > 0
 ```
 
-- [ ] **Step 4: Remove attachment classification and the unused metadata projection**
+- [x] **Step 4: Remove attachment classification and the unused metadata projection**
 
 Change `FileKind` and remove `isAttachment` from `FileRecord`:
 
@@ -393,7 +393,7 @@ export function normalizeFileRecord(
 ): FileRecord {
 ```
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
 Run:
 
@@ -419,7 +419,7 @@ git commit -m "fix: normalize explorer filters"
 - Modify: `src/explorer/__tests__/SmartExplorerView.dom.test.ts`
 - Modify: `styles.css:17-151,318-327`
 
-- [ ] **Step 1: Add failing tests for dynamic extension options and toggle state**
+- [x] **Step 1: Add failing tests for dynamic extension options and toggle state**
 
 Add to the jsdom-backed `SmartExplorerView.dom.test.ts`; do not move the existing Node tests into jsdom. Use a prototype-only view with a real select element:
 
@@ -462,7 +462,7 @@ it("keeps filter disclosure name and expanded state truthful", () => {
 });
 ```
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run:
 
@@ -472,7 +472,7 @@ npm test -- --runInBand src/explorer/__tests__/SmartExplorerView.dom.test.ts
 
 Expected: `extensionSelect` and truthful expanded-state behavior do not exist.
 
-- [ ] **Step 3: Add a labeled dynamic extension select**
+- [x] **Step 3: Add a labeled dynamic extension select**
 
 Add the property:
 
@@ -520,7 +520,7 @@ this.extensionSelect = this.createSelect(
 
 Update existing select calls with `Sort order`, `Group files`, `File kind`, and `Modified date` labels.
 
-- [ ] **Step 4: Synchronize extension options from the current visible projection**
+- [x] **Step 4: Synchronize extension options from the current visible projection**
 
 Add:
 
@@ -545,7 +545,7 @@ private syncExtensionOptions(records: FileRecord[]): void {
 
 Call `syncExtensionOptions(records)` after applying hidden extensions and before building sections. Do not reset `query.extension` when file kind changes; the two filters should compose.
 
-- [ ] **Step 5: Centralize search/filter toggle state**
+- [x] **Step 5: Centralize search/filter toggle state**
 
 Add:
 
@@ -584,7 +584,7 @@ export class SmartExplorerView extends ItemView {
 
 Assign those IDs to the panels, set matching `aria-controls` on the buttons, and add a two-view DOM test asserting all four panel IDs are unique. Call `updateDisclosureButton` from toggle handlers, `updateFileCount`, Escape handling, and `rebuildView`.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -611,7 +611,7 @@ git commit -m "feat: expose extension filtering"
 - Modify: `src/explorer/SmartExplorerView.ts:563-681,790-904,931-944,1489-1500`
 - Modify: `styles.css:160-323,329-368`
 
-- [ ] **Step 1: Add failing count-format tests**
+- [x] **Step 1: Add failing count-format tests**
 
 ```ts
 import { formatFileCount, formatVisibleFileCount } from "../fileRow";
@@ -625,7 +625,7 @@ it("formats filtered totals", () => {
 });
 ```
 
-- [ ] **Step 2: Implement count helpers**
+- [x] **Step 2: Implement count helpers**
 
 ```ts
 export function formatFileCount(count: number): string {
@@ -641,7 +641,7 @@ export function formatVisibleFileCount(displayed: number, total: number): string
 
 Use `formatFileCount(node.fileCount)` for folders and `formatVisibleFileCount` for the toolbar count.
 
-- [ ] **Step 3: Render a stable two-line identity block in list mode**
+- [x] **Step 3: Render a stable two-line identity block in list mode**
 
 Replace the name/meta construction inside `createRowElement` with:
 
@@ -659,7 +659,7 @@ meta.createSpan({ cls: "smart-explorer-row-date", text: formatFileModifiedDate(r
 
 In `renderListContent`, toggle `.is-tree-view` and `.is-list-view` on `listContainer` from the resolved mode.
 
-- [ ] **Step 4: Add narrow-pane CSS and selected-folder feedback**
+- [x] **Step 4: Add narrow-pane CSS and selected-folder feedback**
 
 ```css
 .smart-explorer-row-identity {
@@ -716,7 +716,7 @@ body.is-tablet .smart-explorer-list.is-list-view .smart-explorer-row {
 
 Remove the old rule that hides all row metadata below 420px.
 
-- [ ] **Step 5: Distinguish empty-vault, hidden-all, and no-match states**
+- [x] **Step 5: Distinguish empty-vault, hidden-all, and no-match states**
 
 Implement these exact messages:
 
@@ -733,7 +733,7 @@ if (records.length === 0 && allRecords.length > 0 && !hasInlineCreate) {
 
 Keep the clear action only for `No files match the current search or filters.` Add `role="status"` to all empty-state containers.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -764,7 +764,7 @@ git commit -m "fix: preserve list path context"
 - Modify: `src/__tests__/main.test.ts`
 - Modify: `src/explorer/SmartExplorerView.ts:56-109,252-264`
 
-- [ ] **Step 1: Write failing normalization tests**
+- [x] **Step 1: Write failing normalization tests**
 
 ```ts
 import { normalizeSettings } from "../settings-normalization";
@@ -798,7 +798,7 @@ describe("normalizeSettings", () => {
 });
 ```
 
-- [ ] **Step 2: Implement strict normalization**
+- [x] **Step 2: Implement strict normalization**
 
 Add `lastViewMode` to settings:
 
@@ -857,7 +857,7 @@ export function normalizeSettings(value: unknown): SmartExplorerSettings {
 }
 ```
 
-- [ ] **Step 3: Load normalized settings and expose live refresh**
+- [x] **Step 3: Load normalized settings and expose live refresh**
 
 In `main.ts`:
 
@@ -892,7 +892,7 @@ refreshSettingsProjection(): void {
 
 Do not replace the current view mode, query sort, or query group when settings refresh. `lastViewMode` is the default for the next view instance; already-open leaves remain independent. Hidden extensions and reset manual order update live because they change the shared displayed projection.
 
-- [ ] **Step 4: Refresh open views after relevant settings changes**
+- [x] **Step 4: Refresh open views after relevant settings changes**
 
 After hidden-extension save and manual-order reset:
 
@@ -903,7 +903,7 @@ this.plugin.refreshExplorerViews();
 
 Change the default sort/group descriptions to `Used when a new Smart Explorer view opens.` so users understand that existing views are unchanged.
 
-- [ ] **Step 5: Verify and commit PR 1**
+- [x] **Step 5: Verify and commit PR 1**
 
 Run:
 
@@ -922,6 +922,8 @@ git commit -m "fix: validate and refresh explorer settings"
 ```
 
 PR title: `fix: improve explorer correctness and narrow-pane clarity`
+
+Execution note (2026-08-22): `npm run verify` passed (25 Jest suites / 181 tests, plus 6 release tests). Real Obsidian validation completed in dark theme at 300px, approximately 520px, and 600px widths. Light-theme validation and the combined Non-Markdown + extension filter remain pending the main flow completion.
 
 ---
 
