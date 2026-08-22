@@ -4,3 +4,4 @@ main.js
 data.json
 .claude/
 .playwright-mcp/
+.worktrees/
