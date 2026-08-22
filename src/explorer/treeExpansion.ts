@@ -9,6 +9,12 @@ export function getAncestorFolderPaths(filePath: string): string[] {
 	return parts.map((_, i) => parts.slice(0, i + 1).join("/"));
 }
 
+export function getFolderPathAndAncestors(folderPath: string): string[] {
+	if (!folderPath) return [];
+	const parts = folderPath.split("/");
+	return parts.map((_, i) => parts.slice(0, i + 1).join("/"));
+}
+
 export function shouldOpenTreeFolder(folderPath: string, state: TreeExpansionState): boolean {
 	return (
 		state.hasActiveFilters ||

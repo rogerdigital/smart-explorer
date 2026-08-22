@@ -10,8 +10,6 @@ function makeRecord(overrides: Partial<FileRecord> & { path: string }): FileReco
 		ctime: 1700000000000,
 		mtime: 1700000000000,
 		isMarkdown: overrides.path.endsWith(".md"),
-		isAttachment: false,
-		tags: [],
 		...overrides,
 	};
 }
@@ -28,7 +26,7 @@ const baseQuery: ExplorerQuery = {
 const records: FileRecord[] = [
 	makeRecord({ path: "notes/beta.md", mtime: 2000, ctime: 1000, size: 500 }),
 	makeRecord({ path: "notes/alpha.md", mtime: 3000, ctime: 2000, size: 200 }),
-	makeRecord({ path: "assets/image.png", mtime: 1000, ctime: 3000, size: 1000, isAttachment: true, isMarkdown: false }),
+	makeRecord({ path: "assets/image.png", mtime: 1000, ctime: 3000, size: 1000, isMarkdown: false }),
 	makeRecord({ path: "readme.md", mtime: 4000, ctime: 4000, size: 300 }),
 ];
 

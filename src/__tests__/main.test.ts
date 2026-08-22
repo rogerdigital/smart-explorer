@@ -32,8 +32,74 @@ jest.mock(
 );
 
 import SmartExplorerPlugin from "../main";
+import { SmartExplorerView } from "../explorer/SmartExplorerView";
 
 describe("SmartExplorerPlugin", () => {
+	it("normalizes persisted settings when loading", async () => {
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).loadData = jest.fn().mockResolvedValue({
+			defaultSort: "corrupt",
+			defaultGroup: "folder",
+			lastViewMode: "list",
+			hiddenExtensions: [".PNG", 3],
+			manualOrder: ["b", "b", "a"],
+		});
+
+		await plugin.loadSettings();
+
+		expect(plugin.settings).toEqual({
+			defaultSort: "name-asc",
+			defaultGroup: "folder",
+			lastViewMode: "list",
+			hiddenExtensions: ["png"],
+			manualOrder: ["b", "a"],
+		});
+	});
+
+	it("refreshes settings projections only for Smart Explorer views", () => {
+		const explorer = Object.create(SmartExplorerView.prototype) as SmartExplorerView;
+		(explorer as any).refreshSettingsProjection = jest.fn();
+		const otherView = { refreshSettingsProjection: jest.fn() };
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).app = {
+			workspace: {
+				getLeavesOfType: jest.fn().mockReturnValue([
+					{ view: explorer },
+					{ view: otherView },
+				]),
+			},
+		};
+
+		plugin.refreshExplorerViews();
+
+		expect((explorer as any).refreshSettingsProjection).toHaveBeenCalledTimes(1);
+		expect(otherView.refreshSettingsProjection).not.toHaveBeenCalled();
+	});
+
+	it("resets manual-order state in every open Smart Explorer view", () => {
+		const first = Object.create(SmartExplorerView.prototype) as SmartExplorerView;
+		const second = Object.create(SmartExplorerView.prototype) as SmartExplorerView;
+		(first as any).resetManualOrderState = jest.fn();
+		(second as any).resetManualOrderState = jest.fn();
+		const otherView = { resetManualOrderState: jest.fn() };
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).app = {
+			workspace: {
+				getLeavesOfType: jest.fn().mockReturnValue([
+					{ view: first },
+					{ view: second },
+					{ view: otherView },
+				]),
+			},
+		};
+
+		plugin.resetExplorerManualOrderViews();
+
+		expect((first as any).resetManualOrderState).toHaveBeenCalledTimes(1);
+		expect((second as any).resetManualOrderState).toHaveBeenCalledTimes(1);
+		expect(otherView.resetManualOrderState).not.toHaveBeenCalled();
+	});
+
 	it("registers command palette actions for core explorer workflows", async () => {
 		const commands: { id: string; name: string }[] = [];
 		const plugin = new SmartExplorerPlugin({} as any, {} as any);

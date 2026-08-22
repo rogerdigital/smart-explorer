@@ -19,8 +19,6 @@ function makeRecord(path: string, overrides: Partial<FileRecord> = {}): FileReco
 		ctime: 1700000000000,
 		mtime: 1700000000000,
 		isMarkdown: path.endsWith(".md"),
-		isAttachment: false,
-		tags: [],
 		...overrides,
 	};
 }

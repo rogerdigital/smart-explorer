@@ -18,7 +18,7 @@ export type GroupMode =
 
 export type ViewMode = "tree" | "list";
 
-export type FileKind = "all" | "markdown" | "attachments" | "images";
+export type FileKind = "all" | "markdown" | "non-markdown" | "images";
 
 export type FileRecord = {
 	path: string;
@@ -29,10 +29,6 @@ export type FileRecord = {
 	ctime: number;
 	mtime: number;
 	isMarkdown: boolean;
-	isAttachment: boolean;
-	frontmatter?: Record<string, unknown>;
-	tags: string[];
-	firstHeading?: string;
 };
 
 export type ExplorerQuery = {

@@ -176,6 +176,10 @@
 	contain: content;
 }
 
+.smart-explorer-list.is-list-view .smart-explorer-row {
+	min-height: 44px;
+}
+
 .smart-explorer-tree-file {
 	padding-left: calc(25px + var(--smart-explorer-depth, 0) * 14px);
 }
@@ -203,6 +207,22 @@
 
 .smart-explorer-tree-folder-summary:hover {
 	background: var(--background-modifier-hover);
+}
+
+.smart-explorer-tree-folder-summary.is-selected {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.smart-explorer-tree-folder-summary.is-selected .smart-explorer-tree-disclosure,
+.smart-explorer-tree-folder-summary.is-selected .smart-explorer-tree-count {
+	color: var(--text-on-accent);
+}
+
+.smart-explorer-row:focus-visible,
+.smart-explorer-tree-folder-summary:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
 }
 
 .smart-explorer-tree-disclosure {
@@ -265,12 +285,28 @@
 	opacity: 0.7;
 }
 
+.smart-explorer-row.is-selected .smart-explorer-row-meta {
+	color: var(--text-on-accent);
+	opacity: 0.75;
+}
+
 .smart-explorer-row-name {
-	flex: 1;
+	flex: 1 1 auto;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	min-width: 0;
+}
+
+.smart-explorer-row-identity {
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.smart-explorer-list.is-list-view .smart-explorer-row-identity {
+	flex-direction: column;
+	gap: 1px;
 }
 
 .smart-explorer-inline-edit-row {
@@ -300,12 +336,19 @@
 	white-space: nowrap;
 }
 
+.smart-explorer-list.is-list-view .smart-explorer-row-meta {
+	display: flex;
+}
+
 .smart-explorer-row-parent {
+	flex: 1 1 auto;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
 .smart-explorer-row-date {
+	display: none;
 	flex-shrink: 0;
 }
 
@@ -316,9 +359,8 @@
 }
 
 @container (min-width: 420px) {
-	.smart-explorer-row-meta {
-		display: flex;
-		flex: 0 1 42%;
+	.smart-explorer-list.is-list-view .smart-explorer-row-date {
+		display: inline;
 	}
 }
 
@@ -445,6 +487,11 @@ body.is-tablet .smart-explorer-row {
 	-webkit-user-select: none;
 	user-select: none;
 	-webkit-tap-highlight-color: transparent;
+}
+
+body.is-phone .smart-explorer-list.is-list-view .smart-explorer-row,
+body.is-tablet .smart-explorer-list.is-list-view .smart-explorer-row {
+	min-height: 52px;
 }
 
 body.is-phone .smart-explorer-tree-folder-summary,

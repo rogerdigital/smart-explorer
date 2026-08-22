@@ -14,6 +14,7 @@ describe("filterState", () => {
 	it("detects active search or filters", () => {
 		expect(hasActiveSearchOrFilters(baseQuery)).toBe(false);
 		expect(hasActiveSearchOrFilters({ ...baseQuery, searchText: "daily" })).toBe(true);
+		expect(hasActiveSearchOrFilters({ ...baseQuery, searchText: "   \n\t " })).toBe(false);
 		expect(hasActiveSearchOrFilters({ ...baseQuery, fileKind: "images" })).toBe(true);
 		expect(hasActiveSearchOrFilters({ ...baseQuery, modifiedWithinDays: 7 })).toBe(true);
 	});

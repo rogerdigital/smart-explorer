@@ -24,7 +24,7 @@ src/constants.ts             View type constant
 src/types.ts                 FileRecord, ExplorerQuery, ExplorerSection, SortMode, GroupMode
 
 src/explorer/SmartExplorerView.ts   ItemView: compact toolbar, tree/list rendering, manual order UI
-src/explorer/FileIndex.ts           Builds FileRecord[] from vault + metadataCache
+src/explorer/FileIndex.ts           Builds FileRecord[] from vault file/stat data
 src/explorer/FileTreeModel.ts       Orchestrates filter → sort → group pipeline
 src/explorer/TreeModel.ts           Builds folder-tree nodes for tree mode
 src/explorer/VirtualList.ts         Virtual scrolling list component

@@ -1,8 +1,9 @@
 import type { ExplorerQuery } from "../types";
+import { normalizeSearchText } from "./queryNormalization";
 
 export function hasActiveSearchOrFilters(query: ExplorerQuery): boolean {
 	return (
-		query.searchText.trim().length > 0 ||
+		normalizeSearchText(query.searchText).length > 0 ||
 		query.extension !== null ||
 		query.fileKind !== "all" ||
 		query.modifiedWithinDays !== null

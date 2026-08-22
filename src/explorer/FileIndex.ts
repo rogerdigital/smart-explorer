@@ -1,27 +1,16 @@
 import type { App, MetadataCache, TAbstractFile, TFile, TFolder } from "obsidian";
 import type { FileRecord } from "../types";
 
-const ATTACHMENT_EXTENSIONS = new Set([
-	"png", "jpg", "jpeg", "gif", "bmp", "svg", "webp",
-	"mp3", "wav", "ogg", "m4a",
-	"mp4", "webm", "mov",
-	"pdf", "zip", "tar", "gz",
-]);
-
-function isAttachment(ext: string): boolean {
-	return ATTACHMENT_EXTENSIONS.has(ext.toLowerCase());
-}
-
 function normalizeParentPath(parentPath: string | undefined): string {
 	return parentPath === "/" ? "" : parentPath ?? "";
 }
 
 export function normalizeFileRecord(
 	file: TFile,
-	cache: MetadataCache | null,
+	_cache: MetadataCache | null,
 ): FileRecord {
 	const ext = file.extension.toLowerCase();
-	const record: FileRecord = {
+	return {
 		path: file.path,
 		basename: file.basename,
 		extension: ext,
@@ -30,26 +19,7 @@ export function normalizeFileRecord(
 		ctime: file.stat.ctime,
 		mtime: file.stat.mtime,
 		isMarkdown: ext === "md",
-		isAttachment: isAttachment(ext),
-		tags: [],
 	};
-
-	if (cache && ext === "md") {
-		const fileCache = cache.getFileCache(file);
-		if (fileCache) {
-			if (fileCache.frontmatter) {
-				record.frontmatter = fileCache.frontmatter;
-			}
-			if (fileCache.tags) {
-				record.tags = fileCache.tags.map((t) => t.tag.replace(/^#/, ""));
-			}
-			if (fileCache.headings && fileCache.headings.length > 0) {
-				record.firstHeading = fileCache.headings[0]!.heading;
-			}
-		}
-	}
-
-	return record;
 }
 
 export class FileIndex {

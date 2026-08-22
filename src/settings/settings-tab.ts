@@ -3,6 +3,9 @@ import type { SettingDefinitionItem } from "obsidian";
 import type SmartExplorerPlugin from "../main";
 import { SORT_OPTIONS, GROUP_OPTIONS } from "./settings-helpers";
 import type { SortMode, GroupMode } from "../types";
+import { normalizeSettings } from "./settings-normalization";
+
+const NEW_VIEW_DEFAULT_DESCRIPTION = "Used when a new Smart Explorer view opens.";
 
 export class SmartExplorerSettingTab extends PluginSettingTab {
 	plugin: SmartExplorerPlugin;
@@ -16,7 +19,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 		return [
 			{
 				name: "Default sort mode",
-				desc: "How files are sorted when the explorer opens.",
+				desc: NEW_VIEW_DEFAULT_DESCRIPTION,
 				control: {
 					type: "dropdown",
 					key: "defaultSort",
@@ -26,7 +29,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Default group mode",
-				desc: "How files are grouped when the explorer opens.",
+				desc: NEW_VIEW_DEFAULT_DESCRIPTION,
 				control: {
 					type: "dropdown",
 					key: "defaultGroup",
@@ -53,7 +56,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Default sort mode")
-			.setDesc("How files are sorted when the explorer opens.")
+			.setDesc(NEW_VIEW_DEFAULT_DESCRIPTION)
 			.addDropdown((dd) => {
 				for (const opt of SORT_OPTIONS) {
 					dd.addOption(opt.value, opt.text);
@@ -67,7 +70,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Default group mode")
-			.setDesc("How files are grouped when the explorer opens.")
+			.setDesc(NEW_VIEW_DEFAULT_DESCRIPTION)
 			.addDropdown((dd) => {
 				for (const opt of GROUP_OPTIONS) {
 					dd.addOption(opt.value, opt.text);
@@ -99,11 +102,13 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 				.onChange((v) => {
 					if (debounceTimer) window.clearTimeout(debounceTimer);
 					debounceTimer = window.setTimeout(() => {
-						this.plugin.settings.hiddenExtensions = v
-							.split(",")
-							.map((s) => s.trim().toLowerCase())
-							.filter((s) => s.length > 0);
-						void this.plugin.saveSettings();
+						this.plugin.settings.hiddenExtensions = normalizeSettings({
+							...this.plugin.settings,
+							hiddenExtensions: v.split(","),
+						}).hiddenExtensions;
+						void this.plugin.saveSettings()
+							.then(() => this.plugin.refreshExplorerViews())
+							.catch(() => {});
 					}, 500);
 				});
 		});
@@ -114,9 +119,10 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 			btn.setButtonText("Reset").onClick(() => {
 				this.plugin.settings.manualOrder = [];
 				void this.plugin.saveSettings().then(() => {
+					this.plugin.resetExplorerManualOrderViews();
 					btn.setButtonText("Done!");
 					window.setTimeout(() => { btn.setButtonText("Reset"); }, 1500);
-				});
+				}).catch(() => {});
 			});
 		});
 	}
