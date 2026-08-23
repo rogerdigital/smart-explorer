@@ -222,6 +222,9 @@ export class SmartExplorerView extends ItemView {
 		const events = this.plugin.app.vault;
 
 		this.registerEvent(events.on("create", (file) => {
+			if (file instanceof TFolder) {
+				this.fileIndex.addFolder(file.path);
+			}
 			if (file instanceof TFile) {
 				this.fileIndex.addFile(file);
 				// New files are intentionally NOT appended to manualOrder here:
@@ -243,6 +246,7 @@ export class SmartExplorerView extends ItemView {
 				if (this.selectedFolderPath === file.path || this.selectedFolderPath?.startsWith(`${file.path}/`)) {
 					this.selectedFolderPath = null;
 				}
+				this.fileIndex.removeFolder(file.path);
 				this.collapseFolderPath(file.path);
 			}
 			this.manualOrderNeedsReconcile = true;
@@ -271,6 +275,14 @@ export class SmartExplorerView extends ItemView {
 				this.fileIndex.addFile(file);
 				this.scheduleRebuild();
 			}
+		}));
+
+		// Keep the selection highlight in sync when files open elsewhere, but
+		// never auto-reveal: switching tabs must not scroll or expand folders.
+		this.registerEvent(this.plugin.app.workspace.on("file-open", (file) => {
+			this.selectedPath = file instanceof TFile ? file.path : null;
+			this.selectedFolderPath = null;
+			this.highlightSelected();
 		}));
 	}
 
