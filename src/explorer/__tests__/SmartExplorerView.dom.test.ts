@@ -806,3 +806,40 @@ describe("SmartExplorerView lazy tree mounting", () => {
 		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(0);
 	});
 });
+
+describe("SmartExplorerView windowed list rendering", () => {
+	it("windowes large flat lists and keeps keyboard state on the container", () => {
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.fileIndex = {
+				getAll: () => Array.from({ length: 500 }, (_, i) => makeRecord(`f${i}.md`, "md")),
+				getFolderPaths: jest.fn(() => []),
+				get: (path: string) => makeRecord(path, "md"),
+			};
+			view.viewMode = "list";
+			view.renderList();
+
+			expect(container.querySelectorAll(".smart-explorer-row").length).toBeLessThanOrEqual(21);
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			list.focus();
+
+			list.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+			expect(view.activeItemPath).toBe("f1.md");
+			expect(document.activeElement).toBe(list);
+			const row = container.querySelector<HTMLElement>('[data-path="f1.md"]');
+			expect(row).not.toBeNull();
+			expect(list.getAttribute("aria-activedescendant")).toBe(row!.id);
+
+			list.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+			expect(view.activeItemPath).toBe("f499.md");
+			const last = container.querySelector<HTMLElement>('[data-path="f499.md"]');
+			expect(last).not.toBeNull();
+			expect(list.getAttribute("aria-activedescendant")).toBe(last!.id);
+			expect(last!.getAttribute("aria-posinset")).toBe("500");
+			expect(last!.getAttribute("aria-setsize")).toBe("500");
+		} finally {
+			document.body.removeChild(container);
+		}
+	});
+});

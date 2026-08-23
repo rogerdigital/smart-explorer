@@ -780,9 +780,13 @@ export class SmartExplorerView extends ItemView {
 		const useVirtual = !isManualSort && effectiveQuery.group === "none" && VirtualList.shouldVirtualize(displayed);
 
 		if (useVirtual) {
-			const allRecords = sections[0]!.records;
-			this.virtualList = new VirtualList(this.listContainer);
-			this.virtualList.setItems(allRecords.map((record) => () => this.createRowElement(record)));
+			const virtualRecords = sections[0]!.records;
+			this.virtualList = new VirtualList(this.listContainer, getListRowHeight(Platform.isMobile));
+			this.virtualList.setItems(virtualRecords.map((record) => ({
+				key: record.path,
+				render: () => this.createRowElement(record),
+			})));
+			this.virtualList.setPinnedKey(this.activeItemPath);
 		} else {
 			for (const section of sections) {
 				if (section.records.length === 0) continue;
@@ -822,6 +826,31 @@ export class SmartExplorerView extends ItemView {
 		return `${this.domIdPrefix}-item-${encodeURIComponent(path)}`;
 	}
 
+	// Windowed lists navigate over logical keys: only the visible window plus
+	// the pinned active row exist in the DOM, so indexes come from the
+	// VirtualList instead of the rendered elements.
+	private handleVirtualKeydown(e: KeyboardEvent): void {
+		const keys = this.virtualList!.getKeys();
+		if (keys.length === 0) return;
+		const current = this.activeItemPath ? keys.indexOf(this.activeItemPath) : -1;
+		const action = resolveFocusNavigation({
+			key: e.key,
+			current,
+			count: keys.length,
+			folderExpanded: null,
+		});
+		if (action.type === "none") return;
+		e.preventDefault();
+		if (action.type === "focus") {
+			this.setActiveItem(keys[action.index] ?? null, true);
+		} else if (action.type === "activate" && this.activeItemPath) {
+			this.selectedPath = this.activeItemPath;
+			this.selectedFolderPath = null;
+			void this.openFile(this.activeItemPath);
+			this.highlightSelected();
+		}
+	}
+
 	// All currently mounted rows and folder summaries that participate in
 	// keyboard navigation, in visual order. Rows inside closed folders are
 	// excluded because they are not rendered visually.
@@ -839,8 +868,14 @@ export class SmartExplorerView extends ItemView {
 
 	// Points aria-activedescendant at the mounted active item, or removes it
 	// when the active item is not currently mounted (e.g. filtered out).
-	private setActiveItem(path: string | null): void {
+	private setActiveItem(path: string | null, scrollIntoView = false): void {
 		this.activeItemPath = path;
+		if (this.virtualList) {
+			this.virtualList.setPinnedKey(path);
+			if (scrollIntoView && path) {
+				this.virtualList.scrollToIndex(this.virtualList.indexOfKey(path));
+			}
+		}
 		if (!this.listContainer) return;
 		// Query within the container (not activeDocument) so the model also
 		// works before the view is attached to the live document.
@@ -879,6 +914,10 @@ export class SmartExplorerView extends ItemView {
 				e.preventDefault();
 				this.handleKeyboardManualReorder(this.activeItemPath, e.key === "ArrowUp" ? -1 : 1);
 			}
+			return;
+		}
+		if (this.virtualList) {
+			this.handleVirtualKeydown(e);
 			return;
 		}
 		const items = this.getVisibleNavigationItems();

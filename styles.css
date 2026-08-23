@@ -588,14 +588,17 @@ body.is-tablet .smart-explorer-clear-btn:active {
 	opacity: 0.5;
 }
 
-.smart-explorer-virtual-spacer {
-	flex-shrink: 0;
+.smart-explorer-virtual-content {
+	position: relative;
 }
 
-.smart-explorer-virtual-content {
-	display: flex;
-	flex-direction: column;
+.smart-explorer-virtual-row {
+	position: absolute;
+	left: 0;
+	right: 0;
+	box-sizing: border-box;
 }
+
 
 /* Drag-and-drop manual sort */
 .smart-explorer-drop-indicator {

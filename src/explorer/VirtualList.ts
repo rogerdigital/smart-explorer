@@ -1,85 +1,141 @@
-import { Platform } from "obsidian";
-import { getListRowHeight } from "./rowHeight";
-
 const BUFFER_ROWS = 10;
-// Virtual scrolling is disabled: the virtualized window's content
-// rebuild-per-scroll-frame produced a scroll speed that felt faster than the
-// native (non-virtualized) tree view, because each scroll event emptied and
-// rebuilt the visible rows. Setting the threshold out of reach renders every
-// row directly (matching the tree view path), so list and tree scroll
-// identically. The VirtualList code path is retained for a future fix that
-// re-enables virtualization without the speed regression.
-const VIRTUAL_THRESHOLD = 100000;
+// Lists above this size switch to windowed rendering so row DOM stays bounded.
+const VIRTUAL_THRESHOLD = 200;
+
+export type VirtualListItem = {
+	key: string;
+	render: () => HTMLElement;
+};
 
 export class VirtualList {
 	private container: HTMLElement;
 	private rowHeight: number;
-	private items: (() => HTMLElement)[] = [];
-	private spacerTop: HTMLElement;
-	private spacerBottom: HTMLElement;
+	private items: VirtualListItem[] = [];
+	private keyIndex = new Map<string, number>();
+	private mounted = new Map<string, HTMLElement>();
 	private content: HTMLElement;
 	private scrollHandler: () => void;
-	private lastStart = -1;
-	private lastEnd = -1;
+	private frame: number | null = null;
+	private pinnedKey: string | null = null;
 
-	constructor(container: HTMLElement) {
+	constructor(container: HTMLElement, rowHeight: number) {
 		this.container = container;
-		this.rowHeight = getListRowHeight(Platform.isMobile);
-		this.spacerTop = container.createDiv({ cls: "smart-explorer-virtual-spacer" });
+		this.rowHeight = rowHeight;
 		this.content = container.createDiv({ cls: "smart-explorer-virtual-content" });
-		this.spacerBottom = container.createDiv({ cls: "smart-explorer-virtual-spacer" });
-		this.scrollHandler = () => this.render();
+		this.scrollHandler = () => this.scheduleRender();
 		this.container.addEventListener("scroll", this.scrollHandler);
 	}
 
-	setItems(factories: (() => HTMLElement)[]) {
-		this.items = factories;
-		this.lastStart = -1;
-		this.lastEnd = -1;
-		this.render();
+	setItems(items: VirtualListItem[]) {
+		this.items = items;
+		this.keyIndex = new Map(items.map((item, index) => [item.key, index]));
+		this.mounted.forEach((element) => element.remove());
+		this.mounted.clear();
+		this.renderWindow();
+	}
+
+	getKeys(): string[] {
+		return this.items.map((item) => item.key);
+	}
+
+	indexOfKey(key: string): number {
+		return this.keyIndex.get(key) ?? -1;
+	}
+
+	// The active row stays mounted even when scrolled outside the window, so
+	// the container's aria-activedescendant always references a live node.
+	setPinnedKey(key: string | null): void {
+		this.pinnedKey = key;
+	}
+
+	scrollTo(top: number): void {
+		this.container.scrollTop = top;
+		this.renderWindow();
+	}
+
+	// Scrolls only when the index is outside the current window so normal
+	// navigation does not fight the preserved scroll position.
+	scrollToIndex(index: number): void {
+		if (index < 0 || index >= this.items.length) return;
+		const [start, end] = this.currentWindow();
+		if (index >= start && index < end) return;
+		this.container.scrollTop = index * this.rowHeight;
+		this.renderWindow();
 	}
 
 	destroy() {
-		this.container.removeEventListener("scroll", this.scrollHandler);
-	}
-
-	// Restore the scroll position after the container was rebuilt. Sets the
-	// scrollTop and re-renders the visible window explicitly, so we do not
-	// depend on the scroll event firing synchronously after a programmatic
-	// scrollTop assignment.
-	scrollTo(top: number) {
-		this.container.scrollTop = top;
-		this.lastStart = -1;
-		this.lastEnd = -1;
-		this.render();
-	}
-
-	private render() {
-		const scrollTop = this.container.scrollTop;
-		const viewHeight = this.container.clientHeight;
-		const totalItems = this.items.length;
-		const totalHeight = totalItems * this.rowHeight;
-
-		let start = Math.floor(scrollTop / this.rowHeight) - BUFFER_ROWS;
-		let end = Math.ceil((scrollTop + viewHeight) / this.rowHeight) + BUFFER_ROWS;
-		start = Math.max(0, start);
-		end = Math.min(totalItems, end);
-
-		if (start === this.lastStart && end === this.lastEnd) return;
-		this.lastStart = start;
-		this.lastEnd = end;
-
-		this.spacerTop.style.height = `${start * this.rowHeight}px`;
-		this.spacerBottom.style.height = `${Math.max(0, totalHeight - end * this.rowHeight)}px`;
-
-		this.content.empty();
-		for (let i = start; i < end; i++) {
-			const el = this.items[i]!();
-			this.content.appendChild(el);
+		if (this.frame !== null) {
+			window.cancelAnimationFrame(this.frame);
+			this.frame = null;
 		}
+		this.container.removeEventListener("scroll", this.scrollHandler);
+		this.mounted.forEach((element) => element.remove());
+		this.mounted.clear();
+		this.content.remove();
 	}
 
 	static shouldVirtualize(count: number): boolean {
 		return count > VIRTUAL_THRESHOLD;
+	}
+
+	private scheduleRender = () => {
+		if (this.frame !== null) return;
+		this.frame = window.requestAnimationFrame(() => {
+			this.frame = null;
+			this.renderWindow();
+		});
+	};
+
+	private currentWindow(): [number, number] {
+		const scrollTop = this.container.scrollTop;
+		const viewHeight = this.container.clientHeight;
+		const total = this.items.length;
+		const start = Math.max(0, Math.floor(scrollTop / this.rowHeight) - BUFFER_ROWS);
+		const end = Math.min(total, Math.ceil((scrollTop + viewHeight) / this.rowHeight) + BUFFER_ROWS);
+		return [start, end];
+	}
+
+	private renderWindow() {
+		if (this.items.length === 0) {
+			this.mounted.forEach((element) => element.remove());
+			this.mounted.clear();
+			// Dynamic by design: content height tracks the item count.
+		// eslint-disable-next-line obsidianmd/no-static-styles-assignment
+		this.content.style.setProperty("height", "0px");
+			return;
+		}
+		const total = this.items.length;
+		const [start, end] = this.currentWindow();
+		const wanted = new Map<string, number>();
+		for (let i = start; i < end; i++) {
+			wanted.set(this.items[i]!.key, i);
+		}
+		const pinnedIndex = this.pinnedKey !== null ? this.keyIndex.get(this.pinnedKey) : undefined;
+		if (this.pinnedKey !== null && pinnedIndex !== undefined) {
+			wanted.set(this.pinnedKey, pinnedIndex);
+		}
+		for (const [key, element] of this.mounted) {
+			if (!wanted.has(key)) {
+				element.remove();
+				this.mounted.delete(key);
+			}
+		}
+		this.content.style.setProperty("height", `${total * this.rowHeight}px`);
+		const ordered = Array.from(wanted.entries()).sort((a, b) => a[1] - b[1]);
+		for (const [key, index] of ordered) {
+			let element = this.mounted.get(key);
+			if (!element) {
+				element = this.items[index]!.render();
+				element.dataset.key = key;
+				element.classList.add("smart-explorer-virtual-row");
+				this.mounted.set(key, element);
+			}
+			element.style.setProperty("transform", `translateY(${index * this.rowHeight}px)`);
+			element.setAttribute("aria-posinset", String(index + 1));
+			element.setAttribute("aria-setsize", String(total));
+			if (element.parentElement !== this.content) {
+				this.content.appendChild(element);
+			}
+		}
 	}
 }
