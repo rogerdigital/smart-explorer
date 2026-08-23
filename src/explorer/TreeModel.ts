@@ -18,6 +18,7 @@ export type ExplorerTreeFolderNode = {
 	path: string;
 	depth: number;
 	children: ExplorerTreeNode[];
+	fileCount: number;
 };
 
 export type ExplorerTreeNode = ExplorerTreeFileNode | ExplorerTreeFolderNode;
@@ -26,6 +27,7 @@ export type ExplorerTreeRoot = {
 	type: "root";
 	path: "";
 	children: ExplorerTreeNode[];
+	fileCount: number;
 };
 
 type MutableFolderNode = ExplorerTreeFolderNode & {
@@ -40,7 +42,7 @@ export function buildTree(
 ): ExplorerTreeRoot {
 	const filtered = applyFilters(records, query);
 	const sort = query.sort === "manual" ? "name-asc" : query.sort;
-	const root: ExplorerTreeRoot = { type: "root", path: "", children: [] };
+	const root: ExplorerTreeRoot = { type: "root", path: "", children: [], fileCount: 0 };
 	const folders = new Map<string, MutableFolderNode>();
 
 	for (const folderPath of folderPaths) {
@@ -61,6 +63,7 @@ export function buildTree(
 	}
 
 	sortFolderChildren(root.children, sort, manualOrderIndex);
+	populateFileCounts(root);
 	return root;
 }
 
@@ -88,6 +91,7 @@ function ensureFolderPath(
 				path: currentPath,
 				depth,
 				children: [],
+				fileCount: 0,
 			};
 			folders.set(currentPath, folder);
 			currentChildren.push(folder);
@@ -128,4 +132,13 @@ export function sortTreeFileNodes(
 		sort,
 		manualOrderIndex,
 	).map((record) => nodesByPath.get(record.path)!);
+}
+
+// One post-order pass computes recursive file counts for every folder and
+// the root, so rendering never re-walks subtrees.
+function populateFileCounts(node: ExplorerTreeRoot | ExplorerTreeFolderNode): number {
+	const count = node.children.reduce((total, child) =>
+		total + (child.type === "file" ? 1 : populateFileCounts(child)), 0);
+	node.fileCount = count;
+	return count;
 }

@@ -29,6 +29,7 @@ jest.mock(
 );
 
 import { installObsidianDomShim, mockElementBox } from "../../test-utils/obsidianDom";
+import { buildTree } from "../TreeModel";
 import type { FileRecord } from "../../types";
 import { setIcon } from "obsidian";
 import { SmartExplorerView } from "../SmartExplorerView";
@@ -760,5 +761,48 @@ describe("SmartExplorerView container focus model", () => {
 		} finally {
 			document.body.removeChild(container);
 		}
+	});
+});
+
+describe("SmartExplorerView lazy tree mounting", () => {
+	it("does not mount descendants of a closed folder until it opens", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.query = {
+			searchText: "", sort: "name-asc", group: "none",
+			extension: null, fileKind: "all", modifiedWithinDays: null,
+		};
+		view.treeExpandedPaths = new Set<string>();
+		view.selectedPath = null;
+		view.selectedFolderPath = null;
+		view.activeItemPath = null;
+		view.inlineEdit = null;
+		view.updateTreeToggleControl = jest.fn();
+		view.showTooltip = jest.fn();
+		view.hideTooltip = jest.fn();
+		view.attachLongPressMenu = jest.fn();
+		view.plugin = { settings: { manualOrder: [] } };
+		view.getItemDomId = SmartExplorerView.prototype["getItemDomId"];
+		view.createRowElement = (record: FileRecord) => {
+			const row = document.createElement("div");
+			row.className = "smart-explorer-row";
+			row.dataset.path = record.path;
+			return row;
+		};
+		const tree = buildTree(
+			Array.from({ length: 1000 }, (_, index) => makeRecord(`closed/file-${index}.md`, "md")),
+			view.query,
+		);
+		const folder = tree.children[0] as any;
+
+		const details = view.createTreeNodeElement(folder) as HTMLDetailsElement;
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(0);
+
+		details.open = true;
+		details.dispatchEvent(new Event("toggle"));
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(1000);
+
+		details.open = false;
+		details.dispatchEvent(new Event("toggle"));
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(0);
 	});
 });

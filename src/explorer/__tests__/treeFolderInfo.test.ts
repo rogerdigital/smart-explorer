@@ -9,6 +9,7 @@ function makeFolder(overrides: Partial<ExplorerTreeFolderNode> = {}): ExplorerTr
 		path: "notes",
 		depth: 0,
 		children: [],
+		fileCount: 0,
 		...overrides,
 	};
 }

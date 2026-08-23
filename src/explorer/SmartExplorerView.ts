@@ -5,7 +5,7 @@ import { VirtualList } from "./VirtualList";
 import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
-import type { ExplorerTreeNode } from "./TreeModel";
+import type { ExplorerTreeFolderNode, ExplorerTreeNode } from "./TreeModel";
 import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder, reorderManualOrderByDelta } from "./manualOrder";
 import { formatFileCount, formatFileModifiedDate, formatFileParent, formatVisibleFileCount } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
@@ -49,6 +49,10 @@ const COMPACT_SORT_OPTIONS: { value: SortMode; text: string }[] = [
 	{ value: "manual", text: "Manual" },
 ];
 
+// Above this vault size, "Open all folders" is refused so a single toolbar
+// action cannot mount every subtree at once.
+const EAGER_EXPAND_FILE_LIMIT = 2000;
+
 let smartExplorerViewDomId = 0;
 
 type InlineEditState =
@@ -82,6 +86,7 @@ export class SmartExplorerView extends ItemView {
 	private selectedPath: string | null = null;
 	private selectedFolderPath: string | null = null;
 	private activeItemPath: string | null = null;
+	private treeFolderEntries: WeakMap<HTMLElement, { children: HTMLElement; node: ExplorerTreeFolderNode }> | null = new WeakMap();
 	private treeExpandedPaths: Set<string> = new Set();
 	private visibleTreeFolderPaths: string[] = [];
 	private virtualList: VirtualList | null = null;
@@ -731,18 +736,19 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		const effectiveQuery = { ...this.query, group: this.resolvedGroupMode() };
-		const sections = buildSections(records, effectiveQuery, this.manualOrderIndex);
-		this.currentSections = sections;
-		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
+		// Tree mode filters and sorts exactly once through buildTree; the
+		// sections pipeline below only serves list mode.
 		if (mode === "tree") {
+			this.currentSections = [];
+			this.syncSelectedPathFromActiveFile();
+			const tree = buildTree(records, effectiveQuery, this.manualOrderIndex, folderPaths);
+			const displayed = tree.fileCount;
 			if (displayed === 0 && folderPaths.length === 0 && hasFilters && !hasInlineCreate) {
 				this.renderNoMatches();
 				this.finalizeRender(displayed, records.length);
 				return;
 			}
-			this.syncSelectedPathFromActiveFile();
-			const tree = buildTree(records, effectiveQuery, this.manualOrderIndex, folderPaths);
 			const visibleTreeFolderPaths = collectTreeFolderPaths(tree.children);
 			const rootCreateEl = this.createInlineCreateElement("", 0);
 			if (rootCreateEl) {
@@ -754,6 +760,10 @@ export class SmartExplorerView extends ItemView {
 			this.finalizeRender(displayed, records.length, visibleTreeFolderPaths);
 			return;
 		}
+
+		const sections = buildSections(records, effectiveQuery, this.manualOrderIndex);
+		this.currentSections = sections;
+		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
 		if (displayed === 0 && hasFilters && !hasInlineCreate) {
 			this.renderNoMatches();
@@ -896,24 +906,15 @@ export class SmartExplorerView extends ItemView {
 			case "expand":
 			case "collapse":
 				if (activeElement?.tagName === "SUMMARY") {
-					const details = activeElement.parentElement as HTMLDetailsElement | null;
-					if (details) {
-						details.open = action.type === "expand";
-						// The toggle event fires asynchronously; keep the exposed
-						// expanded state truthful immediately for AT users.
-						activeElement.setAttribute("aria-expanded", String(details.open));
-					}
+					this.setFolderOpen(activeElement, action.type === "expand");
 				}
 				break;
 			case "activate":
 				if (activeElement?.tagName === "SUMMARY") {
-					const details = activeElement.parentElement as HTMLDetailsElement | null;
 					this.selectedFolderPath = activeElement.dataset.navPath ?? null;
 					this.selectedPath = null;
-					if (details) {
-						details.open = !details.open;
-						activeElement.setAttribute("aria-expanded", String(details.open));
-					}
+					const details = activeElement.parentElement as HTMLDetailsElement | null;
+					this.setFolderOpen(activeElement, !(details?.open ?? false));
 					this.highlightSelected();
 				} else if (activeElement?.dataset.navPath) {
 					this.selectedPath = activeElement.dataset.navPath;
@@ -1060,21 +1061,6 @@ export class SmartExplorerView extends ItemView {
 			summary.id = this.getItemDomId(node.path);
 			summary.dataset.path = node.path;
 			summary.dataset.navPath = node.path;
-			details.addEventListener("toggle", () => {
-				if (details.open) {
-					this.treeExpandedPaths.add(node.path);
-				} else {
-					this.treeExpandedPaths.delete(node.path);
-					// Closing a folder unmounts its descendants from keyboard
-					// navigation; move the active item up to the folder itself.
-					if (this.activeItemPath !== null && this.activeItemPath !== node.path
-						&& this.activeItemPath.startsWith(`${node.path}/`)) {
-						this.setActiveItem(node.path);
-					}
-				}
-				summary.setAttribute("aria-expanded", String(details.open));
-				this.updateTreeToggleControl();
-			});
 			summary.classList.toggle("is-selected", this.selectedFolderPath === node.path);
 			summary.style.setProperty("--smart-explorer-depth", String(node.depth));
 			summary.createSpan({ cls: "smart-explorer-tree-disclosure", text: "›" });
@@ -1083,7 +1069,7 @@ export class SmartExplorerView extends ItemView {
 			} else {
 				summary.createSpan({ cls: "smart-explorer-tree-name", text: node.name });
 			}
-			summary.createSpan({ cls: "smart-explorer-tree-count", text: formatFileCount(countTreeFiles(node)) });
+			summary.createSpan({ cls: "smart-explorer-tree-count", text: formatFileCount(node.fileCount) });
 			summary.addEventListener("mouseenter", (e) => this.showTooltip(formatTreeFolderTooltip(node), e));
 			summary.addEventListener("mouseleave", () => this.hideTooltip());
 			summary.addEventListener("click", () => {
@@ -1107,12 +1093,30 @@ export class SmartExplorerView extends ItemView {
 			});
 			const children = details.createDiv({ cls: "smart-explorer-tree-children" });
 			children.setAttribute("role", "group");
-			const inlineCreateEl = this.createInlineCreateElement(node.path, node.depth + 1);
-			if (inlineCreateEl) {
-				children.appendChild(inlineCreateEl);
-			}
-			for (const child of node.children) {
-				children.appendChild(this.createTreeNodeElement(child));
+			this.treeFolderEntries?.set(summary, { children, node });
+			// The native toggle event fires asynchronously; keyboard open/close
+			// syncs the mounted subtree immediately through setFolderOpen, and
+			// this listener re-syncs click and programmatic toggles.
+			details.addEventListener("toggle", () => {
+				if (details.open) {
+					this.treeExpandedPaths.add(node.path);
+					this.mountTreeChildren(children, node);
+				} else {
+					this.treeExpandedPaths.delete(node.path);
+					// Closing a folder unmounts its descendants from keyboard
+					// navigation; move the active item up to the folder itself
+					// before the subtree leaves the DOM.
+					if (this.activeItemPath !== null && this.activeItemPath !== node.path
+						&& this.activeItemPath.startsWith(`${node.path}/`)) {
+						this.setActiveItem(node.path);
+					}
+					this.unmountTreeChildren(children);
+				}
+				summary.setAttribute("aria-expanded", String(details.open));
+				this.updateTreeToggleControl();
+			});
+			if (details.open) {
+				this.mountTreeChildren(children, node);
 			}
 			return details;
 		}
@@ -1122,6 +1126,55 @@ export class SmartExplorerView extends ItemView {
 		row.style.setProperty("--smart-explorer-depth", String(node.depth));
 		row.setAttribute("aria-level", String(node.depth + 1));
 		return row;
+	}
+
+	private mountTreeChildren(
+		container: HTMLElement,
+		node: ExplorerTreeFolderNode,
+	): void {
+		if (container.dataset.mountedPath === node.path) return;
+		container.empty();
+		const inlineCreateEl = this.createInlineCreateElement(node.path, node.depth + 1);
+		if (inlineCreateEl) {
+			container.appendChild(inlineCreateEl);
+		}
+		for (const child of node.children) {
+			container.appendChild(this.createTreeNodeElement(child));
+		}
+		container.dataset.mountedPath = node.path;
+	}
+
+	private unmountTreeChildren(container: HTMLElement): void {
+		container.empty();
+		delete container.dataset.mountedPath;
+	}
+
+	// Keeps a closed folder's subtree out of the DOM; when open, mounts it
+	// synchronously so keyboard navigation can enter it in the same keystroke.
+	private setFolderOpen(summary: HTMLElement, open: boolean): void {
+		const details = summary.parentElement as HTMLDetailsElement | null;
+		if (!details) return;
+		const entry = this.treeFolderEntries?.get(summary) ?? null;
+		if (open) {
+			this.treeExpandedPaths.add(entry?.node.path ?? summary.dataset.navPath ?? "");
+		} else {
+			this.treeExpandedPaths.delete(entry?.node.path ?? summary.dataset.navPath ?? "");
+		}
+		details.open = open;
+		if (entry) {
+			if (open) {
+				this.mountTreeChildren(entry.children, entry.node);
+			} else {
+				if (this.activeItemPath !== null && entry.node.children.length > 0
+					&& this.activeItemPath !== entry.node.path
+					&& this.activeItemPath.startsWith(`${entry.node.path}/`)) {
+					this.setActiveItem(entry.node.path);
+				}
+				this.unmountTreeChildren(entry.children);
+			}
+		}
+		summary.setAttribute("aria-expanded", String(open));
+		this.updateTreeToggleControl();
 	}
 
 	private createRowElement(record: FileRecord): HTMLElement {
@@ -1311,6 +1364,12 @@ export class SmartExplorerView extends ItemView {
 			this.treeExpandedPaths.clear();
 			this.selectedFolderPath = null;
 		} else {
+			// Eagerly expanding a large vault would mount every subtree and
+			// defeat lazy tree rendering; require per-folder expansion instead.
+			if (this.fileIndex.size > EAGER_EXPAND_FILE_LIMIT) {
+				new Notice(`Open folders individually in vaults over ${EAGER_EXPAND_FILE_LIMIT.toLocaleString()} files.`);
+				return;
+			}
 			this.visibleTreeFolderPaths.forEach((path) => this.treeExpandedPaths.add(path));
 		}
 		this.renderList();
@@ -1823,11 +1882,6 @@ export class SmartExplorerView extends ItemView {
 function getInlineCreateFolderPaths(state: InlineEditState | null): string[] {
 	if (!state || (state.kind !== "create-note" && state.kind !== "create-folder")) return [];
 	return getFolderPathAndAncestors(state.folderPath);
-}
-
-function countTreeFiles(node: ExplorerTreeNode): number {
-	if (node.type === "file") return 1;
-	return node.children.reduce((count, child) => count + countTreeFiles(child), 0);
 }
 
 function collectTreeFolderPaths(nodes: ExplorerTreeNode[]): string[] {

@@ -113,3 +113,36 @@ describe("sortTreeFileNodes", () => {
 		expect(result[1]).toBe(oldNode);
 	});
 });
+
+describe("tree file counts", () => {
+	it("stores recursive file counts on every folder and the root", () => {
+		const tree = buildTree([
+			makeRecord("a/one.md"),
+			makeRecord("a/b/two.md"),
+			makeRecord("a/b/three.md"),
+		], baseQuery);
+		const a = tree.children[0] as ExplorerTreeFolderNode;
+		const b = a.children.find((node) => node.type === "folder") as ExplorerTreeFolderNode;
+		expect(tree.fileCount).toBe(3);
+		expect(a.fileCount).toBe(3);
+		expect(b.fileCount).toBe(2);
+	});
+
+	it("counts only files that survive the query filters", () => {
+		const tree = buildTree(
+			[makeRecord("a/one.md"), makeRecord("a/two.png")],
+			{ ...baseQuery, fileKind: "markdown" },
+		);
+		const a = tree.children[0] as ExplorerTreeFolderNode;
+		expect(tree.fileCount).toBe(1);
+		expect(a.fileCount).toBe(1);
+	});
+
+	it("counts files in empty folder structures from folderPaths", () => {
+		const tree = buildTree([], baseQuery, undefined, ["a", "a/b"]);
+		const a = tree.children[0] as ExplorerTreeFolderNode;
+		const b = a.children[0] as ExplorerTreeFolderNode;
+		expect(a.fileCount).toBe(0);
+		expect(b.fileCount).toBe(0);
+	});
+});
