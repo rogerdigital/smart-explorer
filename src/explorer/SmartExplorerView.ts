@@ -213,7 +213,8 @@ export class SmartExplorerView extends ItemView {
 		if (this.saveOrderTimeout) {
 			window.clearTimeout(this.saveOrderTimeout);
 			this.saveOrderTimeout = null;
-			void this.plugin.saveSettings();
+			await this.plugin.saveSettingsWithNotice("Could not save manual order");
+			await this.plugin.flushSettings();
 		}
 	}
 
@@ -303,9 +304,7 @@ export class SmartExplorerView extends ItemView {
 		this.viewModeBtn.addEventListener("click", () => {
 			this.viewMode = this.viewMode === "tree" ? "list" : "tree";
 			this.plugin.settings.lastViewMode = this.viewMode;
-			void this.plugin.saveSettings().catch((error) => {
-				new Notice(`Could not save view mode: ${error instanceof Error ? error.message : String(error)}`);
-			});
+			void this.plugin.saveSettingsWithNotice("Could not save view mode");
 			this.renderList();
 		});
 		this.createSelect(row1, COMPACT_SORT_OPTIONS, "smart-explorer-sort", "Sort order", (v) => {
@@ -1462,22 +1461,33 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private async openFileInLeaf(path: string, leafType: "tab" | "right" | "window") {
-		const file = this.app.vault.getAbstractFileByPath(path);
-		if (!(file instanceof TFile)) return;
-		try {
+		await this.runAction(async () => {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) return;
 			const leaf = leafType === "right"
 				? this.app.workspace.getLeaf("split", "vertical")
 				: leafType === "window"
 					? this.app.workspace.openPopoutLeaf()
 					: this.app.workspace.getLeaf("tab");
 			await leaf.openFile(file);
-		} catch (e) {
-			new Notice(`Could not open file: ${e instanceof Error ? e.message : String(e)}`);
+		}, "Could not open file");
+	}
+
+	// Single error boundary for user-triggered async actions: failures turn
+	// into a Notice instead of an unhandled rejection.
+	private async runAction(action: () => Promise<void>, failure: string): Promise<void> {
+		try {
+			await action();
+		} catch (error) {
+			new Notice(`${failure}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
 	private copyPath(path: string) {
-		void navigator.clipboard.writeText(path);
+		void this.runAction(async () => {
+			await navigator.clipboard.writeText(path);
+			new Notice("Copied path.");
+		}, "Could not copy path");
 	}
 
 	private async openInDefaultApp(path: string) {
@@ -1490,6 +1500,7 @@ export class SmartExplorerView extends ItemView {
 		const error = await shell.openPath(absolutePath);
 		if (error) new Notice(`Could not open in default app: ${error}`);
 	}
+
 
 	private revealInFinder(path: string) {
 		const shell = getElectronShell();
@@ -1690,7 +1701,7 @@ export class SmartExplorerView extends ItemView {
 			this.plugin.settings.manualOrder = this.plugin.settings.manualOrder.filter(
 				(p) => allPaths.has(p),
 			);
-			void this.plugin.saveSettings();
+			void this.plugin.saveSettingsWithNotice("Could not save manual order");
 		}, 500);
 	}
 
@@ -1903,14 +1914,15 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private async openFile(path: string) {
-		const file = this.app.vault.getAbstractFileByPath(path);
-		if (file instanceof TFile) {
+		await this.runAction(async () => {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) return;
 			let leaf = this.app.workspace.getLeaf(false);
 			if (leaf.view?.getViewType() === SMART_EXPLORER_VIEW_TYPE) {
 				leaf = this.app.workspace.getLeaf("tab");
 			}
 			await leaf.openFile(file);
-		}
+		}, "Could not open file");
 	}
 }
 

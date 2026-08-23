@@ -68,6 +68,8 @@ function makeView() {
 			manualOrder: [],
 		},
 		saveSettings: jest.fn().mockResolvedValue(undefined),
+		saveSettingsWithNotice: jest.fn().mockResolvedValue(true),
+		flushSettings: jest.fn().mockResolvedValue(undefined),
 	};
 	const view = new SmartExplorerView({ app } as never, plugin as never) as any;
 	const container = view.containerEl.children[1] as HTMLElement;
@@ -101,7 +103,8 @@ describe("SmartExplorerView DOM foundation", () => {
 		expect(first.view.viewMode).toBe("list");
 		expect(second.viewMode).toBe("tree");
 		expect(first.view.plugin.settings.lastViewMode).toBe("list");
-		expect(first.view.plugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(first.view.plugin.saveSettingsWithNotice).toHaveBeenCalledTimes(1);
+		expect(first.view.plugin.saveSettings).not.toHaveBeenCalled();
 	});
 
 	it("applies current Obsidian element info fields used by the explorer", () => {
@@ -841,5 +844,32 @@ describe("SmartExplorerView windowed list rendering", () => {
 		} finally {
 			document.body.removeChild(container);
 		}
+	});
+});
+
+describe("SmartExplorerView close persistence", () => {
+	it("awaits a pending manual-order save before close completes", async () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.searchRenderScheduler = { cancel: jest.fn() };
+		view.tooltipEl = null;
+		view.virtualList = null;
+		view.dragSortManager = null;
+		view.listContainer = null;
+		view.rebuildTimeout = null;
+		view.saveOrderTimeout = window.setTimeout(() => {}, 10000);
+		const order: string[] = [];
+		view.plugin = {
+			saveSettingsWithNotice: jest.fn(async () => {
+				order.push("save");
+			}),
+			flushSettings: jest.fn(async () => {
+				order.push("flush");
+			}),
+		};
+
+		await view.onClose();
+
+		expect(order).toEqual(["save", "flush"]);
+		expect(view.saveOrderTimeout).toBeNull();
 	});
 });

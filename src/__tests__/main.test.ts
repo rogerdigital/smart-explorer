@@ -145,4 +145,62 @@ describe("SmartExplorerPlugin", () => {
 		});
 		expect(workspace.revealLeaf).toHaveBeenCalledWith(leftLeaf);
 	});
+	it("serializes immutable settings snapshots", async () => {
+		let resolveFirst!: () => void;
+		const firstWrite = new Promise<void>((resolve) => { resolveFirst = resolve; });
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		await plugin.loadSettings();
+		plugin.saveData = jest.fn()
+			.mockReturnValueOnce(firstWrite)
+			.mockResolvedValueOnce(undefined);
+
+		plugin.settings.hiddenExtensions = ["png"];
+		const first = plugin.saveSettings();
+		plugin.settings.hiddenExtensions = ["pdf"];
+		const second = plugin.saveSettings();
+
+		expect(plugin.saveData).toHaveBeenCalledTimes(1);
+		resolveFirst();
+		await first;
+		await second;
+		expect(plugin.saveData).toHaveBeenNthCalledWith(1, expect.objectContaining({ hiddenExtensions: ["png"] }));
+		expect(plugin.saveData).toHaveBeenNthCalledWith(2, expect.objectContaining({ hiddenExtensions: ["pdf"] }));
+	});
+
+	it("continues saving after one write rejects", async () => {
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		await plugin.loadSettings();
+		plugin.saveData = jest.fn()
+			.mockRejectedValueOnce(new Error("disk full"))
+			.mockResolvedValueOnce(undefined);
+
+		await expect(plugin.saveSettings()).rejects.toThrow("disk full");
+		await expect(plugin.saveSettings()).resolves.toBeUndefined();
+		expect(plugin.saveData).toHaveBeenCalledTimes(2);
+	});
+
+	it("notifies and recovers through saveSettingsWithNotice", async () => {
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		await plugin.loadSettings();
+		plugin.saveData = jest.fn()
+			.mockRejectedValueOnce(new Error("disk full"))
+			.mockResolvedValueOnce(undefined);
+
+		await expect(plugin.saveSettingsWithNotice("Could not save settings")).resolves.toBe(false);
+		await expect(plugin.saveSettingsWithNotice("Could not save settings")).resolves.toBe(true);
+	});
+
+	it("flushes pending writes", async () => {
+		let resolveWrite!: () => void;
+		const write = new Promise<void>((resolve) => { resolveWrite = resolve; });
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		await plugin.loadSettings();
+		plugin.saveData = jest.fn().mockReturnValueOnce(write);
+		const saving = plugin.saveSettings();
+		const flushed = plugin.flushSettings();
+		resolveWrite();
+		await Promise.all([saving, flushed]);
+		expect(plugin.saveData).toHaveBeenCalledTimes(1);
+	});
+
 });

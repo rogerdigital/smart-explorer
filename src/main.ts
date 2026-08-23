@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "./constants";
 import { SmartExplorerView } from "./explorer/SmartExplorerView";
 import { SmartExplorerSettingTab } from "./settings/settings-tab";
@@ -56,8 +56,36 @@ export default class SmartExplorerPlugin extends Plugin {
 		this.settings = normalizeSettings(await this.loadData());
 	}
 
-	async saveSettings() {
-		await this.saveData(this.settings);
+	// Writes are serialized through an immutable snapshot so a pending slow
+	// write can never be overtaken by a newer one, and a rejected write
+	// notifies its caller without poisoning the queue for the next save.
+	private settingsSaveQueue: Promise<unknown> | null = null;
+
+	saveSettings(): Promise<void> {
+		const snapshot: SmartExplorerSettings = {
+			...this.settings,
+			hiddenExtensions: [...this.settings.hiddenExtensions],
+			manualOrder: [...this.settings.manualOrder],
+		};
+		const operation = this.settingsSaveQueue === null
+			? this.saveData(snapshot)
+			: this.settingsSaveQueue.then(() => this.saveData(snapshot));
+		this.settingsSaveQueue = operation.catch(() => undefined);
+		return operation;
+	}
+
+	async flushSettings(): Promise<void> {
+		await this.settingsSaveQueue;
+	}
+
+	async saveSettingsWithNotice(failure: string): Promise<boolean> {
+		try {
+			await this.saveSettings();
+			return true;
+		} catch (error) {
+			new Notice(`${failure}: ${error instanceof Error ? error.message : String(error)}`);
+			return false;
+		}
 	}
 
 	refreshExplorerViews() {

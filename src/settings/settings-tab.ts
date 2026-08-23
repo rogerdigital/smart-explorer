@@ -64,7 +64,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 				dd.setValue(this.plugin.settings.defaultSort)
 					.onChange(async (v) => {
 						this.plugin.settings.defaultSort = v as SortMode;
-						await this.plugin.saveSettings();
+						await this.plugin.saveSettingsWithNotice("Could not save settings");
 					});
 			});
 
@@ -78,7 +78,7 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 				dd.setValue(this.plugin.settings.defaultGroup)
 					.onChange(async (v) => {
 						this.plugin.settings.defaultGroup = v as GroupMode;
-						await this.plugin.saveSettings();
+						await this.plugin.saveSettingsWithNotice("Could not save settings");
 					});
 			});
 
@@ -106,9 +106,10 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 							...this.plugin.settings,
 							hiddenExtensions: v.split(","),
 						}).hiddenExtensions;
-						void this.plugin.saveSettings()
-							.then(() => this.plugin.refreshExplorerViews())
-							.catch(() => {});
+						void this.plugin.saveSettingsWithNotice("Could not save settings")
+							.then((saved) => {
+								if (saved) void this.plugin.refreshExplorerViews();
+							});
 					}, 500);
 				});
 		});
@@ -118,11 +119,12 @@ export class SmartExplorerSettingTab extends PluginSettingTab {
 		setting.addButton((btn) => {
 			btn.setButtonText("Reset").onClick(() => {
 				this.plugin.settings.manualOrder = [];
-				void this.plugin.saveSettings().then(() => {
+				void this.plugin.saveSettingsWithNotice("Could not save settings").then((saved) => {
+					if (!saved) return;
 					this.plugin.resetExplorerManualOrderViews();
 					btn.setButtonText("Done!");
 					window.setTimeout(() => { btn.setButtonText("Reset"); }, 1500);
-				}).catch(() => {});
+				});
 			});
 		});
 	}
