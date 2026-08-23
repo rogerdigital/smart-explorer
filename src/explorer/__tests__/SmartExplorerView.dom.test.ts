@@ -602,3 +602,163 @@ describe("SmartExplorerView toolbar controls", () => {
 			.toEqual(panels.map((panel) => panel.id));
 	});
 });
+
+describe("SmartExplorerView container focus model", () => {
+	function setupList(view: any) {
+		view.fileIndex = {
+			getAll: () => ["a.md", "b.md", "c.md"].map((path) => makeRecord(path, "md")),
+			getFolderPaths: jest.fn(() => []),
+			get: (path: string) => makeRecord(path, "md"),
+		};
+		view.viewMode = "list";
+		view.renderList();
+	}
+
+	function setupTree(view: any) {
+		view.fileIndex = {
+			getAll: () => [makeRecord("notes/one.md", "md")].concat(
+				Array.from({ length: 2 }, (_, i) => makeRecord(`root-${i}.md`, "md")),
+			),
+			getFolderPaths: () => ["notes"],
+			get: (path: string) => makeRecord(path, "md"),
+		};
+		view.viewMode = "tree";
+		view.renderList();
+	}
+
+	function keydown(el: Element, init: KeyboardEventInit) {
+		el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+	}
+
+	it("gives the composite container the only tab stop with stable item ids", () => {
+		const { view, container } = makeView();
+		setupList(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+
+		expect(list.getAttribute("tabindex")).toBe("0");
+		const rows = Array.from(container.querySelectorAll<HTMLElement>(".smart-explorer-row"));
+		expect(rows.every((row) => row.getAttribute("tabindex") === null)).toBe(true);
+		expect(rows[0]!.id).toMatch(/^smart-explorer-\d+-item-/);
+		expect(rows[0]!.dataset.navPath).toBe("a.md");
+	});
+
+	it("applies mode-dependent container roles and initial active descendant", () => {
+		const { view, container } = makeView();
+		setupList(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+		expect(list.getAttribute("role")).toBe("listbox");
+		expect(list.getAttribute("aria-label")).toBe("Vault file list");
+		expect(list.getAttribute("aria-activedescendant")).toBe(container.querySelector(".smart-explorer-row")!.id);
+
+		view.viewMode = "tree";
+		view.renderList();
+		expect(list.getAttribute("role")).toBe("tree");
+		expect(list.getAttribute("aria-label")).toBe("Vault files");
+	});
+
+	it("moves the active item with Arrow/Home/End while DOM focus stays on the container", () => {
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			setupList(view);
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			const rows = () => Array.from(container.querySelectorAll<HTMLElement>(".smart-explorer-row"));
+			list.focus();
+			expect(document.activeElement).toBe(list);
+
+			keydown(list, { key: "ArrowDown" });
+			expect(list.getAttribute("aria-activedescendant")).toBe(rows()[1]!.id);
+			expect(rows()[1]!.classList.contains("is-keyboard-active")).toBe(true);
+			expect(rows()[0]!.classList.contains("is-keyboard-active")).toBe(false);
+			expect(document.activeElement).toBe(list);
+
+			keydown(list, { key: "End" });
+			expect(list.getAttribute("aria-activedescendant")).toBe(rows()[2]!.id);
+			keydown(list, { key: "Home" });
+			expect(list.getAttribute("aria-activedescendant")).toBe(rows()[0]!.id);
+			keydown(list, { key: "ArrowUp" });
+			expect(list.getAttribute("aria-activedescendant")).toBe(rows()[0]!.id);
+		} finally {
+			document.body.removeChild(container);
+		}
+	});
+
+	it("activates the active file on Enter", () => {
+		const { view, container } = makeView();
+		setupList(view);
+		view.openFile = jest.fn();
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+
+		keydown(list, { key: "ArrowDown" });
+		keydown(list, { key: "Enter" });
+
+		expect(view.openFile).toHaveBeenCalledWith("b.md");
+		expect(view.selectedPath).toBe("b.md");
+		expect(view.selectedFolderPath).toBeNull();
+	});
+
+	it("expands and collapses folders from the keyboard with truthful aria-expanded", () => {
+		const { view, container } = makeView();
+		setupTree(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+		const summary = container.querySelector<HTMLElement>(".smart-explorer-tree-folder-summary")!;
+		const details = summary.closest("details")!;
+		expect(details.open).toBe(false);
+		expect(summary.getAttribute("aria-expanded")).toBe("false");
+
+		keydown(list, { key: "Home" });
+		expect(list.getAttribute("aria-activedescendant")).toBe(summary.id);
+		keydown(list, { key: "ArrowRight" });
+		expect(details.open).toBe(true);
+		expect(summary.getAttribute("aria-expanded")).toBe("true");
+
+		keydown(list, { key: "ArrowLeft" });
+		expect(details.open).toBe(false);
+		expect(summary.getAttribute("aria-expanded")).toBe("false");
+	});
+
+	it("moves the active item to the folder when it closes over an active descendant", () => {
+		const { view, container } = makeView();
+		setupTree(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+		const summary = container.querySelector<HTMLElement>(".smart-explorer-tree-folder-summary")!;
+		const details = summary.closest("details")!;
+
+		keydown(list, { key: "Home" });
+		keydown(list, { key: "ArrowRight" });
+		keydown(list, { key: "ArrowDown" });
+		const fileRow = container.querySelector<HTMLElement>('.smart-explorer-row[data-path="notes/one.md"]')!;
+		expect(list.getAttribute("aria-activedescendant")).toBe(fileRow.id);
+
+		details.open = false;
+		details.dispatchEvent(new Event("toggle"));
+
+		expect(list.getAttribute("aria-activedescendant")).toBe(summary.id);
+		expect(summary.classList.contains("is-keyboard-active")).toBe(true);
+	});
+
+	it("reorders manually with Alt+Arrow and announces the new position", () => {
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.plugin.settings.manualOrder = [];
+			setupList(view);
+			view.query.sort = "manual";
+			view.renderList();
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			list.focus();
+
+			keydown(list, { key: "ArrowDown" });
+			keydown(list, { key: "ArrowDown", altKey: true });
+
+			expect(view.plugin.settings.manualOrder).toEqual(["a.md", "c.md", "b.md"]);
+			expect(container.querySelector(".smart-explorer-sr-only")?.textContent)
+				.toBe("Moved b.md to position 3 of 3.");
+			const movedRow = container.querySelector<HTMLElement>('.smart-explorer-row[data-path="b.md"]')!;
+			expect(list.getAttribute("aria-activedescendant")).toBe(movedRow.id);
+			expect(document.activeElement).toBe(list);
+		} finally {
+			document.body.removeChild(container);
+		}
+	});
+});

@@ -219,8 +219,13 @@
 	color: var(--text-on-accent);
 }
 
-.smart-explorer-row:focus-visible,
-.smart-explorer-tree-folder-summary:focus-visible {
+.smart-explorer-list:focus-visible {
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: -1px;
+}
+
+.smart-explorer-list:focus-within .smart-explorer-row.is-keyboard-active,
+.smart-explorer-list:focus-within .smart-explorer-tree-folder-summary.is-keyboard-active {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
 }

@@ -30,6 +30,7 @@ interface TestGlobals {
 	createSpan?: TestCreateSpan;
 	requestAnimationFrame?: typeof requestAnimationFrame;
 	cancelAnimationFrame?: typeof cancelAnimationFrame;
+	CSS?: { escape(value: string): string };
 }
 
 export interface ElementBox {
@@ -187,6 +188,10 @@ export function installObsidianDomShim(): void {
 	defineGlobal("createEl", createEl);
 	defineGlobal("createDiv", createDiv);
 	defineGlobal("createSpan", createSpan);
+
+	if (!runtimeGlobals.CSS) {
+		defineGlobal("CSS", { escape: (value: string) => String(value) });
+	}
 
 	if (!runtimeGlobals.requestAnimationFrame) {
 		defineGlobal("requestAnimationFrame", (callback) =>

@@ -81,6 +81,7 @@ export class SmartExplorerView extends ItemView {
 	private readonly domIdPrefix: string;
 	private selectedPath: string | null = null;
 	private selectedFolderPath: string | null = null;
+	private activeItemPath: string | null = null;
 	private treeExpandedPaths: Set<string> = new Set();
 	private visibleTreeFolderPaths: string[] = [];
 	private virtualList: VirtualList | null = null;
@@ -153,6 +154,11 @@ export class SmartExplorerView extends ItemView {
 
 		const body = container.createDiv({ cls: "smart-explorer-body" });
 		this.listContainer = body.createDiv({ cls: "smart-explorer-list" });
+		// Composite widget focus model: the container holds the single tab stop
+		// and DOM focus; the active row is tracked via aria-activedescendant so
+		// keyboard state survives future windowed rendering of list rows.
+		this.listContainer.setAttribute("tabindex", "0");
+		this.listContainer.addEventListener("keydown", (e) => this.handleListKeydown(e));
 		this.listContainer.addEventListener("contextmenu", (e) => this.showBlankContextMenu(e));
 	}
 
@@ -799,92 +805,122 @@ export class SmartExplorerView extends ItemView {
 		this.updateFileCount(displayed, total);
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
-		this.updateRovingTabindex();
+		this.restoreActiveItem();
 	}
 
-	// All currently rendered rows and folder summaries that participate in
-	// keyboard navigation, in visual order. Closed <details> children and other
-	// hidden elements are excluded via offsetParent.
+	private getItemDomId(path: string): string {
+		return `${this.domIdPrefix}-item-${encodeURIComponent(path)}`;
+	}
+
+	// All currently mounted rows and folder summaries that participate in
+	// keyboard navigation, in visual order. Rows inside closed folders are
+	// excluded because they are not rendered visually.
 	private getVisibleNavigationItems(): HTMLElement[] {
 		if (!this.listContainer) return [];
 		return Array.from(this.listContainer.querySelectorAll<HTMLElement>(
 			'[role="option"], [role="treeitem"]',
-		)).filter((element) => element.offsetParent !== null);
+		)).filter((element) => {
+			// Rows inside a closed folder are not rendered visually; the
+			// folder's own summary stays navigable.
+			const closedFolder = element.closest("details:not([open])");
+			return !closedFolder || closedFolder.querySelector(":scope > summary") === element;
+		});
 	}
 
-	// Roving tabindex: exactly one navigable item is tabbable — the selected
-	// row/folder when it is visible, otherwise the first visible item.
-	private updateRovingTabindex(): void {
+	// Points aria-activedescendant at the mounted active item, or removes it
+	// when the active item is not currently mounted (e.g. filtered out).
+	private setActiveItem(path: string | null): void {
+		this.activeItemPath = path;
+		if (!this.listContainer) return;
+		// Query within the container (not activeDocument) so the model also
+		// works before the view is attached to the live document.
+		const mounted = path
+			? this.listContainer.querySelector<HTMLElement>(`[id="${this.getItemDomId(path)}"]`)
+			: null;
+		if (mounted) {
+			this.listContainer.setAttribute("aria-activedescendant", mounted.id);
+		} else {
+			this.listContainer.removeAttribute("aria-activedescendant");
+		}
+		for (const item of this.getVisibleNavigationItems()) {
+			item.classList.toggle("is-keyboard-active", item.dataset.navPath === path);
+		}
+	}
+
+	// After a full re-render, keep the active item stable when it is still
+	// visible; otherwise prefer the selected row, then the first visible item.
+	private restoreActiveItem(): void {
+		const items = this.getVisibleNavigationItems();
+		if (items.length === 0) {
+			this.setActiveItem(null);
+			return;
+		}
+		const paths = items.map((item) => item.dataset.navPath ?? null);
+		if (this.activeItemPath && paths.includes(this.activeItemPath)) return;
+		const next = this.selectedPath && paths.includes(this.selectedPath)
+			? this.selectedPath
+			: paths[0] ?? null;
+		this.setActiveItem(next);
+	}
+
+	private handleListKeydown(e: KeyboardEvent): void {
+		if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+			if (this.query.sort === "manual" && this.activeItemPath) {
+				e.preventDefault();
+				this.handleKeyboardManualReorder(this.activeItemPath, e.key === "ArrowUp" ? -1 : 1);
+			}
+			return;
+		}
 		const items = this.getVisibleNavigationItems();
 		if (items.length === 0) return;
-		let active = items.findIndex((element) =>
-			(this.selectedPath !== null && element.dataset.path === this.selectedPath) ||
-			(this.selectedFolderPath !== null && element.dataset.path === this.selectedFolderPath));
-		if (active < 0) active = 0;
-		for (let i = 0; i < items.length; i++) {
-			items[i]!.setAttribute("tabindex", i === active ? "0" : "-1");
-		}
-	}
-
-	private handleFileRowKeydown(e: KeyboardEvent, row: HTMLElement, record: FileRecord): void {
-		if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown") && this.query.sort === "manual") {
-			e.preventDefault();
-			this.handleKeyboardManualReorder(record.path, e.key === "ArrowUp" ? -1 : 1);
-			return;
-		}
-		if (e.key === "Enter" || e.key === " ") {
-			e.preventDefault();
-			this.selectedPath = record.path;
-			this.selectedFolderPath = null;
-			void this.openFile(record.path);
-			this.highlightSelected();
-			return;
-		}
-		const items = this.getVisibleNavigationItems();
-		const current = items.indexOf(row);
-		if (current < 0) return;
+		const activeElement = items.find((item) => item.dataset.navPath === this.activeItemPath) ?? null;
+		const current = activeElement ? items.indexOf(activeElement) : -1;
+		const folderExpanded = activeElement?.tagName === "SUMMARY"
+			? (activeElement.parentElement as HTMLDetailsElement | null)?.open ?? null
+			: null;
 		const action = resolveFocusNavigation({
 			key: e.key,
 			current,
 			count: items.length,
-			folderExpanded: null,
-		});
-		if (action.type !== "focus") return;
-		e.preventDefault();
-		items[action.index]?.focus();
-	}
-
-	private handleFolderKeydown(
-		e: KeyboardEvent,
-		summary: HTMLElement,
-		details: HTMLDetailsElement,
-		node: { path: string },
-	): void {
-		const items = this.getVisibleNavigationItems();
-		const current = items.indexOf(summary);
-		const action = resolveFocusNavigation({
-			key: e.key,
-			current,
-			count: items.length,
-			folderExpanded: details.open,
+			folderExpanded,
 		});
 		if (action.type === "none") return;
 		e.preventDefault();
 		switch (action.type) {
-			case "focus":
-				items[action.index]?.focus();
+			case "focus": {
+				const target = items[action.index]!;
+				this.setActiveItem(target.dataset.navPath ?? null);
+				target.scrollIntoView?.({ block: "nearest" });
 				break;
+			}
 			case "expand":
-				details.open = true;
-				break;
 			case "collapse":
-				details.open = false;
+				if (activeElement?.tagName === "SUMMARY") {
+					const details = activeElement.parentElement as HTMLDetailsElement | null;
+					if (details) {
+						details.open = action.type === "expand";
+						// The toggle event fires asynchronously; keep the exposed
+						// expanded state truthful immediately for AT users.
+						activeElement.setAttribute("aria-expanded", String(details.open));
+					}
+				}
 				break;
 			case "activate":
-				this.selectedFolderPath = node.path;
-				this.selectedPath = null;
-				details.open = !details.open;
-				this.highlightSelected();
+				if (activeElement?.tagName === "SUMMARY") {
+					const details = activeElement.parentElement as HTMLDetailsElement | null;
+					this.selectedFolderPath = activeElement.dataset.navPath ?? null;
+					this.selectedPath = null;
+					if (details) {
+						details.open = !details.open;
+						activeElement.setAttribute("aria-expanded", String(details.open));
+					}
+					this.highlightSelected();
+				} else if (activeElement?.dataset.navPath) {
+					this.selectedPath = activeElement.dataset.navPath;
+					this.selectedFolderPath = null;
+					void this.openFile(this.selectedPath);
+					this.highlightSelected();
+				}
 				break;
 		}
 	}
@@ -924,7 +960,8 @@ export class SmartExplorerView extends ItemView {
 		}
 		if (!force && this.inlineEdit.folderPath !== folderPath) return null;
 		const row = createDiv({ cls: "smart-explorer-row smart-explorer-inline-edit-row" });
-		row.setAttribute("role", "option");
+		// No role/id/data-nav-path: the inline input carries its own semantics
+		// and must not join the container's composite keyboard navigation.
 		if (this.resolvedViewMode() === "tree") {
 			row.classList.add("smart-explorer-tree-file");
 			row.style.setProperty("--smart-explorer-depth", String(depth));
@@ -1020,15 +1057,20 @@ export class SmartExplorerView extends ItemView {
 			summary.setAttribute("tabindex", "-1");
 			summary.setAttribute("aria-level", String(node.depth + 1));
 			summary.setAttribute("aria-expanded", String(details.open));
+			summary.id = this.getItemDomId(node.path);
 			summary.dataset.path = node.path;
-			summary.addEventListener("keydown", (e) => {
-				this.handleFolderKeydown(e, summary, details, node);
-			});
+			summary.dataset.navPath = node.path;
 			details.addEventListener("toggle", () => {
 				if (details.open) {
 					this.treeExpandedPaths.add(node.path);
 				} else {
 					this.treeExpandedPaths.delete(node.path);
+					// Closing a folder unmounts its descendants from keyboard
+					// navigation; move the active item up to the folder itself.
+					if (this.activeItemPath !== null && this.activeItemPath !== node.path
+						&& this.activeItemPath.startsWith(`${node.path}/`)) {
+						this.setActiveItem(node.path);
+					}
 				}
 				summary.setAttribute("aria-expanded", String(details.open));
 				this.updateTreeToggleControl();
@@ -1085,7 +1127,8 @@ export class SmartExplorerView extends ItemView {
 	private createRowElement(record: FileRecord): HTMLElement {
 		const row = createDiv({ cls: "smart-explorer-row" });
 		row.dataset.path = record.path;
-		row.setAttribute("tabindex", "-1");
+		row.id = this.getItemDomId(record.path);
+		row.dataset.navPath = record.path;
 		row.setAttribute("role", this.resolvedViewMode() === "tree" ? "treeitem" : "option");
 		const isSelected = record.path === this.selectedPath;
 		if (isSelected) {
@@ -1123,9 +1166,6 @@ export class SmartExplorerView extends ItemView {
 			this.highlightSelected();
 		};
 		row.addEventListener("click", activate);
-		row.addEventListener("keydown", (e) => {
-			this.handleFileRowKeydown(e, row, record);
-		});
 
 		row.addEventListener("contextmenu", (e) => {
 			e.preventDefault();
@@ -1500,11 +1540,13 @@ export class SmartExplorerView extends ItemView {
 			this.currentSections,
 		);
 		if (!this.applyManualReorder(nextOrder)) return;
-		// The render inside applyManualReorder rebuilt the DOM; restore focus to
-		// the moved row so repeated Alt+Arrow presses keep working.
-		this.listContainer
-			?.querySelector<HTMLElement>(`.smart-explorer-row[data-path="${CSS.escape(draggedPath)}"]`)
-			?.focus();
+		// The render inside applyManualReorder rebuilt the DOM; point the
+		// container's active descendant back at the moved row so repeated
+		// Alt+Arrow presses keep operating on the same file.
+		const moved = this.listContainer
+			?.querySelector<HTMLElement>(`[id="${this.getItemDomId(draggedPath)}"]`) ?? null;
+		moved?.scrollIntoView?.({ block: "nearest" });
+		this.setActiveItem(draggedPath);
 		const visible = this.currentSections.flatMap((section) => section.records.map((record) => record.path));
 		const position = visible.indexOf(draggedPath);
 		if (position >= 0) {
@@ -1764,7 +1806,6 @@ export class SmartExplorerView extends ItemView {
 			row.classList.toggle("is-selected", selected);
 			row.setAttribute("aria-selected", String(selected));
 		});
-		this.updateRovingTabindex();
 	}
 
 	private async openFile(path: string) {
