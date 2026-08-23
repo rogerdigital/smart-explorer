@@ -6,7 +6,7 @@ import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeNode } from "./TreeModel";
-import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder } from "./manualOrder";
+import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder, reorderManualOrderByDelta } from "./manualOrder";
 import { formatFileCount, formatFileModifiedDate, formatFileParent, formatVisibleFileCount } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerGroupMode, resolveExplorerViewMode, resolveManualSeedSort } from "./viewMode";
@@ -97,6 +97,10 @@ export class SmartExplorerView extends ItemView {
 	// on first entry and as the fallback order for files added during the session.
 	private manualSeedSort: Exclude<SortMode, "manual"> = "name-asc";
 	private manualHintEl: HTMLElement | null = null;
+	private liveRegion: HTMLElement | null = null;
+	// Sections of the most recent render; the visible order used to translate
+	// keyboard reorder deltas into manual-order drop indexes.
+	private currentSections: { id: string; records: FileRecord[] }[] = [];
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartExplorerPlugin) {
 		super(leaf);
@@ -186,6 +190,7 @@ export class SmartExplorerView extends ItemView {
 		this.extensionSelect = null;
 		this.inlineEdit = null;
 		this.manualHintEl = null;
+		this.liveRegion = null;
 		this.searchRenderScheduler.cancel();
 		if (this.rebuildTimeout) window.clearTimeout(this.rebuildTimeout);
 		// Flush a pending manual-order save before the view goes away; the
@@ -433,6 +438,10 @@ export class SmartExplorerView extends ItemView {
 
 		this.manualHintEl = toolbar.createDiv({ cls: "smart-explorer-manual-hint is-hidden" });
 
+		this.liveRegion = toolbar.createDiv({ cls: "smart-explorer-sr-only" });
+		this.liveRegion.setAttribute("aria-live", "polite");
+		this.liveRegion.setAttribute("aria-atomic", "true");
+
 		this.updateViewModeControl();
 		this.updateManualOrderControls();
 		this.updateDisclosureButton(searchToggleBtn, row2, "search", this.query.searchText.trim().length > 0);
@@ -610,7 +619,7 @@ export class SmartExplorerView extends ItemView {
 		if (this.manualHintEl) {
 			if (isManualSort) {
 				const seedLabel = SORT_OPTIONS.find((o) => o.value === this.manualSeedSort)?.text ?? "A-Z";
-				this.manualHintEl.setText(`Manual order, starting from ${seedLabel}. Drag rows to reorder.`);
+				this.manualHintEl.setText(`Manual order, starting from ${seedLabel}. Drag rows or press Alt+Up/Down to reorder.`);
 				this.manualHintEl.classList.remove("is-hidden");
 			} else {
 				this.manualHintEl.classList.add("is-hidden");
@@ -717,6 +726,7 @@ export class SmartExplorerView extends ItemView {
 
 		const effectiveQuery = { ...this.query, group: this.resolvedGroupMode() };
 		const sections = buildSections(records, effectiveQuery, this.manualOrderIndex);
+		this.currentSections = sections;
 		const displayed = sections.reduce((n, s) => n + s.records.length, 0);
 
 		if (mode === "tree") {
@@ -817,6 +827,11 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private handleFileRowKeydown(e: KeyboardEvent, row: HTMLElement, record: FileRecord): void {
+		if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown") && this.query.sort === "manual") {
+			e.preventDefault();
+			this.handleKeyboardManualReorder(record.path, e.key === "ArrowUp" ? -1 : 1);
+			return;
+		}
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
 			this.selectedPath = record.path;
@@ -1468,14 +1483,41 @@ export class SmartExplorerView extends ItemView {
 		toIndex: number,
 		sections: { id: string; records: FileRecord[] }[],
 	) {
-		const order = this.plugin.settings.manualOrder;
 		const nextOrder = reorderManualOrder(
-			order,
+			this.plugin.settings.manualOrder,
 			draggedPath,
 			toIndex,
 			sections,
 		);
-		if (nextOrder.join("\n") === order.join("\n")) return;
+		this.applyManualReorder(nextOrder);
+	}
+
+	private handleKeyboardManualReorder(draggedPath: string, delta: -1 | 1): void {
+		const nextOrder = reorderManualOrderByDelta(
+			this.plugin.settings.manualOrder,
+			draggedPath,
+			delta,
+			this.currentSections,
+		);
+		if (!this.applyManualReorder(nextOrder)) return;
+		// The render inside applyManualReorder rebuilt the DOM; restore focus to
+		// the moved row so repeated Alt+Arrow presses keep working.
+		this.listContainer
+			?.querySelector<HTMLElement>(`.smart-explorer-row[data-path="${CSS.escape(draggedPath)}"]`)
+			?.focus();
+		const visible = this.currentSections.flatMap((section) => section.records.map((record) => record.path));
+		const position = visible.indexOf(draggedPath);
+		if (position >= 0) {
+			const name = draggedPath.split("/").pop() ?? draggedPath;
+			this.announce(`Moved ${name} to position ${position + 1} of ${visible.length}.`);
+		}
+	}
+
+	// Commits a new manual order: undo stack, index rebuild, re-render, and
+	// debounced persistence. Returns false when the order did not change.
+	private applyManualReorder(nextOrder: string[]): boolean {
+		const order = this.plugin.settings.manualOrder;
+		if (nextOrder.join("\n") === order.join("\n")) return false;
 		this.manualOrderUndoStack.push([...order]);
 		if (this.manualOrderUndoStack.length > 20) {
 			this.manualOrderUndoStack.shift();
@@ -1485,6 +1527,12 @@ export class SmartExplorerView extends ItemView {
 		this.renderList();
 		this.scheduleSaveOrder();
 		this.updateManualOrderControls();
+		return true;
+	}
+
+	private announce(text: string): void {
+		if (!this.liveRegion) return;
+		this.liveRegion.setText(text);
 	}
 
 	private undoManualReorder() {

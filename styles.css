@@ -645,3 +645,15 @@ body.is-tablet .smart-explorer-clear-btn:active {
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 	max-width: 300px;
 }
+
+.smart-explorer-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}

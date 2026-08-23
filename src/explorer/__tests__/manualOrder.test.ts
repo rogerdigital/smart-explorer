@@ -2,6 +2,7 @@ import {
 	reconcileManualOrder,
 	renameManualOrderPaths,
 	reorderManualOrder,
+	reorderManualOrderByDelta,
 } from "../manualOrder";
 import type { FileRecord } from "../../types";
 
@@ -186,5 +187,41 @@ describe("renameManualOrderPaths", () => {
 		const order = ["a.md", "b.md"];
 
 		expect(renameManualOrderPaths(order, "missing", "new")).toBe(order);
+	});
+});
+
+describe("reorderManualOrderByDelta", () => {
+	it("moves a visible manual item one position by keyboard", () => {
+		const sections = [{ id: "all", records: ["a.md", "b.md", "c.md"].map(makeRecord) }];
+
+		expect(reorderManualOrderByDelta(["a.md", "b.md", "c.md"], "b.md", -1, sections))
+			.toEqual(["b.md", "a.md", "c.md"]);
+		expect(reorderManualOrderByDelta(["a.md", "b.md", "c.md"], "b.md", 1, sections))
+			.toEqual(["a.md", "c.md", "b.md"]);
+	});
+
+	it("returns the same order when the move would leave the list", () => {
+		const sections = [{ id: "all", records: ["a.md", "b.md"].map(makeRecord) }];
+
+		const order = ["a.md", "b.md"];
+		expect(reorderManualOrderByDelta(order, "a.md", -1, sections)).toBe(order);
+		expect(reorderManualOrderByDelta(order, "b.md", 1, sections)).toBe(order);
+	});
+
+	it("returns the same order for a path hidden from the visible sections", () => {
+		const sections = [{ id: "all", records: ["a.md"].map(makeRecord) }];
+		const order = ["a.md", "b.md"];
+
+		expect(reorderManualOrderByDelta(order, "b.md", 1, sections)).toBe(order);
+	});
+
+	it("moves across section boundaries through the flattened visible order", () => {
+		const sections = [
+			{ id: "first", records: ["a.md"].map(makeRecord) },
+			{ id: "second", records: ["b.md"].map(makeRecord) },
+		];
+
+		expect(reorderManualOrderByDelta(["a.md", "b.md"], "b.md", -1, sections))
+			.toEqual(["b.md", "a.md"]);
 	});
 });
