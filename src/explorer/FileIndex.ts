@@ -122,13 +122,19 @@ export class FileIndex {
 		for (const [path, record] of rewritten) {
 			this.records.set(path, record);
 		}
+		// Collect rewrites first: mutating the Set during iteration would let
+		// freshly added entries (e.g. renaming "a" into "a/sub") match the old
+		// prefix and be rewritten twice.
+		const renamedFolders: string[] = [];
 		for (const path of this.folderPaths) {
 			if (path === oldFolder || path.startsWith(oldPrefix)) {
 				this.folderPaths.delete(path);
-				this.addAncestorFolders(newFolder);
-				const newSub = path === oldFolder ? newFolder : `${newFolder}/${path.slice(oldPrefixLen)}`;
-				this.folderPaths.add(newSub);
+				renamedFolders.push(path === oldFolder ? newFolder : `${newFolder}/${path.slice(oldPrefixLen)}`);
 			}
+		}
+		this.addAncestorFolders(newFolder);
+		for (const path of renamedFolders) {
+			this.folderPaths.add(path);
 		}
 	}
 

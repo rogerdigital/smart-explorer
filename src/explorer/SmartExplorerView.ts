@@ -1513,7 +1513,6 @@ export class SmartExplorerView extends ItemView {
 		if (error) new Notice(`Could not open in default app: ${error}`);
 	}
 
-
 	private revealInFinder(path: string) {
 		const shell = getElectronShell();
 		const absolutePath = this.getAbsoluteVaultPath(path);
