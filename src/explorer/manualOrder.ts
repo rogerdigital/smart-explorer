@@ -122,3 +122,25 @@ export function reorderManualOrder(
 	nextOrder.splice(targetGlobalIndex, 0, draggedPath);
 	return nextOrder;
 }
+
+/**
+ * Moves `draggedPath` by one visible position (keyboard reorder).
+ *
+ * `delta` is expressed in visible-row coordinates, but `reorderManualOrder`
+ * expects a drop index where the dragged row still occupies its original slot,
+ * hence the `target + 1` adjustment for downward moves.
+ */
+export function reorderManualOrderByDelta(
+	currentOrder: string[],
+	draggedPath: string,
+	delta: -1 | 1,
+	sections: ManualOrderSection[],
+): string[] {
+	const visible = sections.flatMap((section) => section.records.map((record) => record.path));
+	const index = visible.indexOf(draggedPath);
+	if (index < 0) return currentOrder;
+	const target = Math.max(0, Math.min(visible.length - 1, index + delta));
+	if (target === index) return currentOrder;
+	const dropBoundary = delta < 0 ? target : target + 1;
+	return reorderManualOrder(currentOrder, draggedPath, dropBoundary, sections);
+}

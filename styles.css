@@ -219,8 +219,13 @@
 	color: var(--text-on-accent);
 }
 
-.smart-explorer-row:focus-visible,
-.smart-explorer-tree-folder-summary:focus-visible {
+.smart-explorer-list:focus-visible {
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: -1px;
+}
+
+.smart-explorer-list:focus-within .smart-explorer-row.is-keyboard-active,
+.smart-explorer-list:focus-within .smart-explorer-tree-folder-summary.is-keyboard-active {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
 }
@@ -644,4 +649,16 @@ body.is-tablet .smart-explorer-clear-btn:active {
 	pointer-events: none;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 	max-width: 300px;
+}
+
+.smart-explorer-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
 }
