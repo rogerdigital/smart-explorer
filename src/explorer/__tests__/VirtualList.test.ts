@@ -125,6 +125,25 @@ describe("VirtualList windowed rendering", () => {
 		expect(container.querySelectorAll(".test-row")).toHaveLength(0);
 	});
 
+	it("scrolls when navigating to an index inside the buffer but outside the viewport", () => {
+		const container = makeContainer(440);
+		const list = new VirtualList(container, 44);
+		list.setItems(makeItems(1000));
+
+		// Viewport shows rows 0-9; row 15 is within the render buffer
+		// (0-19) but below the visible bottom.
+		list.scrollToIndex(15);
+		expect(container.scrollTop).toBeGreaterThan(0);
+		expect(container.querySelector('[data-key="k15"]')).not.toBeNull();
+
+		// Row 20 is already visible at this scroll position: no jump.
+		const before = container.scrollTop;
+		list.scrollToIndex(20);
+		expect(container.scrollTop).toBe(before);
+
+		list.destroy();
+	});
+
 	it("keeps a pinned key mounted even outside the visible window", () => {
 		const container = makeContainer(440);
 		const list = new VirtualList(container, 44);

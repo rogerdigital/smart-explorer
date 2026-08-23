@@ -53,13 +53,20 @@ export class VirtualList {
 		this.renderWindow();
 	}
 
-	// Scrolls only when the index is outside the current window so normal
-	// navigation does not fight the preserved scroll position.
+	// Scrolls only when the index is outside the *visible* viewport (not the
+	// buffered render window) so normal navigation does not fight the
+	// preserved scroll position while never drifting off-screen.
 	scrollToIndex(index: number): void {
 		if (index < 0 || index >= this.items.length) return;
-		const [start, end] = this.currentWindow();
-		if (index >= start && index < end) return;
-		this.container.scrollTop = index * this.rowHeight;
+		const scrollTop = this.container.scrollTop;
+		const viewHeight = this.container.clientHeight;
+		const firstVisible = Math.floor(scrollTop / this.rowHeight);
+		const lastVisible = Math.ceil((scrollTop + viewHeight) / this.rowHeight);
+		if (index >= firstVisible && index < lastVisible) return;
+		const target = index * this.rowHeight;
+		// Keep some context above the target instead of aligning to its top
+		// edge when navigating upwards.
+		this.container.scrollTop = index > firstVisible ? target : Math.max(0, target - viewHeight + this.rowHeight);
 		this.renderWindow();
 	}
 

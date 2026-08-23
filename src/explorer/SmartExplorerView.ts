@@ -6,7 +6,7 @@ import { DragSortManager } from "./DragSortManager";
 import { buildSections } from "./FileTreeModel";
 import { buildTree } from "./TreeModel";
 import type { ExplorerTreeFolderNode, ExplorerTreeNode } from "./TreeModel";
-import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder, reorderManualOrderByDelta } from "./manualOrder";
+import { reconcileManualOrder, renameManualOrderPaths, reorderManualOrder, reorderManualOrderByDelta, sameOrder } from "./manualOrder";
 import { formatFileCount, formatFileModifiedDate, formatFileParent, formatVisibleFileCount } from "./fileRow";
 import { formatTreeFolderTooltip } from "./treeFolderInfo";
 import { resolveExplorerGroupMode, resolveExplorerViewMode, resolveManualSeedSort } from "./viewMode";
@@ -98,6 +98,9 @@ export class SmartExplorerView extends ItemView {
 	private saveOrderTimeout: number | null = null;
 	private tooltipEl: HTMLElement | null = null;
 	private inlineEdit: InlineEditState | null = null;
+	// Reconciliation (seed + missing/deleted path sync) only runs when the
+	// indexed path set changed; ordinary manual renders rebuild just the index.
+	private manualOrderNeedsReconcile = true;
 	// Seed sort for the current manual-sort session: the sort the user was
 	// viewing right before switching into manual. Used to initialize the order
 	// on first entry and as the fallback order for files added during the session.
@@ -225,6 +228,7 @@ export class SmartExplorerView extends ItemView {
 				// seed-sorted position, which keeps ordering consistent regardless
 				// of when files are created.
 			}
+			this.manualOrderNeedsReconcile = true;
 			this.scheduleRebuild();
 		}));
 
@@ -240,10 +244,12 @@ export class SmartExplorerView extends ItemView {
 				}
 				this.collapseFolderPath(file.path);
 			}
+			this.manualOrderNeedsReconcile = true;
 			this.scheduleRebuild();
 		}));
 
 		this.registerEvent(events.on("rename", (file, oldPath) => {
+			this.manualOrderNeedsReconcile = true;
 			if (file instanceof TFile) {
 				this.fileIndex.removeFile(oldPath);
 				this.fileIndex.addFile(file);
@@ -280,6 +286,7 @@ export class SmartExplorerView extends ItemView {
 
 	resetManualOrderState() {
 		this.manualOrderUndoStack = [];
+		this.manualOrderNeedsReconcile = true;
 		this.updateManualOrderControls();
 		this.renderList();
 	}
@@ -732,7 +739,12 @@ export class SmartExplorerView extends ItemView {
 		}
 
 		if (this.query.sort === "manual") {
-			this.initializeManualOrder(allRecords);
+			if (this.manualOrderNeedsReconcile) {
+				this.initializeManualOrder(allRecords);
+				this.manualOrderNeedsReconcile = false;
+			} else {
+				this.buildManualOrderIndex();
+			}
 		}
 
 		const effectiveQuery = { ...this.query, group: this.resolvedGroupMode() };
@@ -779,6 +791,15 @@ export class SmartExplorerView extends ItemView {
 		const isManualSort = this.query.sort === "manual";
 		const useVirtual = !isManualSort && effectiveQuery.group === "none" && VirtualList.shouldVirtualize(displayed);
 
+		// The drag manager must exist before manual rows are created so rows
+		// can register themselves directly at creation time.
+		if (isManualSort && this.listContainer) {
+			this.dragSortManager = new DragSortManager(this.listContainer, {
+				onReorder: (path, toIndex) => this.handleManualReorder(path, toIndex, sections),
+			});
+			this.dragSortManager.enable();
+		}
+
 		if (useVirtual) {
 			const virtualRecords = sections[0]!.records;
 			this.virtualList = new VirtualList(this.listContainer, getListRowHeight(Platform.isMobile));
@@ -795,20 +816,9 @@ export class SmartExplorerView extends ItemView {
 					header.setText(`${section.title} (${section.records.length})`);
 				}
 				for (const record of section.records) {
-					this.listContainer.appendChild(this.createRowElement(record));
+					this.listContainer.appendChild(this.createRowElement(record, section.id));
 				}
 			}
-		}
-
-		if (isManualSort && this.listContainer) {
-			const rowHeight = getListRowHeight(Platform.isMobile);
-			this.dragSortManager = new DragSortManager(this.listContainer, {
-				getRowHeight: () => rowHeight,
-				onReorder: (path, toIndex) => this.handleManualReorder(path, toIndex, sections),
-			});
-			this.dragSortManager.enable();
-
-			this.attachManualDragRows(sections);
 		}
 
 		this.finalizeRender(displayed, records.length);
@@ -977,21 +987,6 @@ export class SmartExplorerView extends ItemView {
 
 	private hasInlineCreate(): boolean {
 		return this.inlineEdit?.kind === "create-note" || this.inlineEdit?.kind === "create-folder";
-	}
-
-	private attachManualDragRows(sections: { id: string; records: FileRecord[] }[]) {
-		if (!this.listContainer || !this.dragSortManager) return;
-		this.dragSortManager.clearRows();
-		for (const section of sections) {
-			for (const record of section.records) {
-				const row = this.listContainer.querySelector<HTMLElement>(
-					`.smart-explorer-row[data-path="${CSS.escape(record.path)}"]`,
-				);
-				if (!row) continue;
-				const handle = row.querySelector<HTMLElement>(".smart-explorer-row-drag-handle");
-				this.dragSortManager.attachRow(row, record.path, section.id, handle ?? row);
-			}
-		}
 	}
 
 	private createInlineCreateElement(folderPath: string, depth: number, force = false): HTMLElement | null {
@@ -1216,7 +1211,7 @@ export class SmartExplorerView extends ItemView {
 		this.updateTreeToggleControl();
 	}
 
-	private createRowElement(record: FileRecord): HTMLElement {
+	private createRowElement(record: FileRecord, sectionId?: string): HTMLElement {
 		const row = createDiv({ cls: "smart-explorer-row" });
 		row.dataset.path = record.path;
 		row.id = this.getItemDomId(record.path);
@@ -1235,6 +1230,7 @@ export class SmartExplorerView extends ItemView {
 				e.preventDefault();
 				e.stopPropagation();
 			});
+			this.dragSortManager?.attachRow(row, record.path, sectionId, handle);
 		}
 		const identity = row.createSpan({ cls: "smart-explorer-row-identity" });
 		if (this.inlineEdit?.kind === "rename-file" && this.inlineEdit.path === record.path) {
@@ -1657,7 +1653,7 @@ export class SmartExplorerView extends ItemView {
 	// debounced persistence. Returns false when the order did not change.
 	private applyManualReorder(nextOrder: string[]): boolean {
 		const order = this.plugin.settings.manualOrder;
-		if (nextOrder.join("\n") === order.join("\n")) return false;
+		if (sameOrder(nextOrder, order)) return false;
 		this.manualOrderUndoStack.push([...order]);
 		if (this.manualOrderUndoStack.length > 20) {
 			this.manualOrderUndoStack.shift();
