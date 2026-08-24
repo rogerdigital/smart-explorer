@@ -178,3 +178,38 @@ describe("FileIndex.renameFolder", () => {
 		expect(index.get("new-backup/file.md")).toBeUndefined();
 	});
 });
+
+describe("FileIndex.removeFolder and incremental folder paths", () => {
+	it("removes every indexed child for a deleted folder", () => {
+		const index = makeIndex();
+		for (const path of ["keep.md", "gone/a.md", "gone/nested/b.md"]) {
+			index.addFile(mockTFile({ path }) as any);
+		}
+
+		index.removeFolder("gone");
+
+		expect(index.getAll().map((record) => record.path)).toEqual(["keep.md"]);
+	});
+
+	it("rewrites folder paths on rename and clears them on folder delete", () => {
+		const index = makeIndex();
+		index.setFolderPaths(["a", "a/b", "keep"]);
+		expect(index.getFolderPaths()).toEqual(["a", "a/b", "keep"]);
+
+		index.renameFolder("a", "renamed");
+		expect(index.getFolderPaths()).toEqual(["keep", "renamed", "renamed/b"]);
+
+		index.removeFolder("renamed");
+		expect(index.getFolderPaths()).toEqual(["keep"]);
+	});
+
+	it("adds and removes single folder paths incrementally", () => {
+		const index = makeIndex();
+		index.addFolder("new");
+		index.addFolder("new/nested");
+		expect(index.getFolderPaths()).toEqual(["new", "new/nested"]);
+
+		index.removeFolder("new");
+		expect(index.getFolderPaths()).toEqual([]);
+	});
+});

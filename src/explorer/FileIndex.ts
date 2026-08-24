@@ -25,6 +25,8 @@ export function normalizeFileRecord(
 export class FileIndex {
 	private app: App;
 	private records: Map<string, FileRecord> = new Map();
+	// Maintained incrementally so tree renders never rescan every loaded file.
+	private folderPaths = new Set<string>();
 
 	constructor(app: App) {
 		this.app = app;
@@ -33,11 +35,26 @@ export class FileIndex {
 	build(): FileRecord[] {
 		const files = this.app.vault.getFiles();
 		this.records.clear();
+		this.folderPaths.clear();
 		for (const file of files) {
 			const record = normalizeFileRecord(file, this.app.metadataCache);
 			this.records.set(file.path, record);
+			this.addAncestorFolders(record.parentPath);
+		}
+		for (const file of this.app.vault.getAllLoadedFiles()) {
+			if (isFolder(file) && file.path !== "/") {
+				this.folderPaths.add(file.path);
+			}
 		}
 		return this.getAll();
+	}
+
+	private addAncestorFolders(parentPath: string): void {
+		if (!parentPath) return;
+		const parts = parentPath.split("/");
+		for (let i = 1; i <= parts.length; i++) {
+			this.folderPaths.add(parts.slice(0, i).join("/"));
+		}
 	}
 
 	getAll(): FileRecord[] {
@@ -51,10 +68,31 @@ export class FileIndex {
 	addFile(file: TFile): void {
 		const record = normalizeFileRecord(file, this.app.metadataCache);
 		this.records.set(file.path, record);
+		this.addAncestorFolders(record.parentPath);
+	}
+
+	addFolder(folderPath: string): void {
+		if (folderPath && folderPath !== "/") this.folderPaths.add(folderPath);
+	}
+
+	setFolderPaths(paths: string[]): void {
+		this.folderPaths = new Set(paths);
 	}
 
 	removeFile(path: string): void {
 		this.records.delete(path);
+	}
+
+	// Obsidian emits delete only for the folder itself; every indexed child
+	// under it must go explicitly or it stays as a ghost row until reload.
+	removeFolder(folderPath: string): void {
+		const prefix = `${folderPath}/`;
+		for (const path of this.records.keys()) {
+			if (path.startsWith(prefix)) this.records.delete(path);
+		}
+		for (const path of this.folderPaths) {
+			if (path === folderPath || path.startsWith(prefix)) this.folderPaths.delete(path);
+		}
 	}
 
 	// Rewrite every record whose path lives at or under oldFolder to its new
@@ -84,6 +122,20 @@ export class FileIndex {
 		for (const [path, record] of rewritten) {
 			this.records.set(path, record);
 		}
+		// Collect rewrites first: mutating the Set during iteration would let
+		// freshly added entries (e.g. renaming "a" into "a/sub") match the old
+		// prefix and be rewritten twice.
+		const renamedFolders: string[] = [];
+		for (const path of this.folderPaths) {
+			if (path === oldFolder || path.startsWith(oldPrefix)) {
+				this.folderPaths.delete(path);
+				renamedFolders.push(path === oldFolder ? newFolder : `${newFolder}/${path.slice(oldPrefixLen)}`);
+			}
+		}
+		this.addAncestorFolders(newFolder);
+		for (const path of renamedFolders) {
+			this.folderPaths.add(path);
+		}
 	}
 
 	getExtensions(): string[] {
@@ -95,9 +147,7 @@ export class FileIndex {
 	}
 
 	getFolderPaths(): string[] {
-		return this.app.vault.getAllLoadedFiles()
-			.filter((file): file is TFolder => isFolder(file) && file.path !== "/")
-			.map((folder) => folder.path)
+		return Array.from(this.folderPaths)
 			.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 	}
 

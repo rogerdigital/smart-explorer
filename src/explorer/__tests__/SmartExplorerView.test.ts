@@ -189,3 +189,4 @@ describe("SmartExplorerView reveal state", () => {
 		expect(view.rebuildView).toHaveBeenCalledTimes(1);
 	});
 });
+

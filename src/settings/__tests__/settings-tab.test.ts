@@ -72,7 +72,7 @@ describe("SmartExplorerSettingTab", () => {
 		let finishSave!: () => void;
 		const plugin = {
 			settings: { hiddenExtensions: [], manualOrder: [] },
-			saveSettings: jest.fn(() => new Promise<void>((resolve) => { finishSave = resolve; })),
+			saveSettingsWithNotice: jest.fn(() => new Promise<boolean>((resolve) => { finishSave = () => resolve(true); })),
 			refreshExplorerViews: jest.fn(),
 			resetExplorerManualOrderViews: jest.fn(),
 		};
@@ -91,7 +91,7 @@ describe("SmartExplorerSettingTab", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(plugin.saveSettingsWithNotice).toHaveBeenCalledTimes(1);
 		expect(plugin.refreshExplorerViews).toHaveBeenCalledTimes(1);
 		expect(plugin.resetExplorerManualOrderViews).not.toHaveBeenCalled();
 		jest.useRealTimers();
@@ -102,7 +102,7 @@ describe("SmartExplorerSettingTab", () => {
 		const onChange = jest.fn();
 		const plugin = {
 			settings: { hiddenExtensions: [], manualOrder: [] },
-			saveSettings: jest.fn().mockRejectedValue(new Error("disk full")),
+			saveSettingsWithNotice: jest.fn().mockResolvedValue(false),
 			refreshExplorerViews: jest.fn(),
 			resetExplorerManualOrderViews: jest.fn(),
 		};
@@ -127,7 +127,7 @@ describe("SmartExplorerSettingTab", () => {
 	it("does not refresh or show reset success when saving fails", async () => {
 		const plugin = {
 			settings: { hiddenExtensions: [], manualOrder: ["a"] },
-			saveSettings: jest.fn().mockRejectedValue(new Error("disk full")),
+			saveSettingsWithNotice: jest.fn().mockResolvedValue(false),
 			refreshExplorerViews: jest.fn(),
 			resetExplorerManualOrderViews: jest.fn(),
 		};
@@ -149,7 +149,7 @@ describe("SmartExplorerSettingTab", () => {
 		let finishSave!: () => void;
 		const plugin = {
 			settings: { hiddenExtensions: [], manualOrder: ["a"] },
-			saveSettings: jest.fn(() => new Promise<void>((resolve) => { finishSave = resolve; })),
+			saveSettingsWithNotice: jest.fn(() => new Promise<boolean>((resolve) => { finishSave = () => resolve(true); })),
 			refreshExplorerViews: jest.fn(),
 			resetExplorerManualOrderViews: jest.fn(),
 		};
@@ -163,10 +163,43 @@ describe("SmartExplorerSettingTab", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(plugin.saveSettingsWithNotice).toHaveBeenCalledTimes(1);
 		expect(plugin.resetExplorerManualOrderViews).toHaveBeenCalledTimes(1);
 		expect(plugin.refreshExplorerViews).not.toHaveBeenCalled();
 		expect(button.setButtonText).toHaveBeenCalledWith("Done!");
+		jest.useRealTimers();
+	});
+
+	it("still saves a later change after a failed hidden-extension save", async () => {
+		jest.useFakeTimers();
+		const onChange = jest.fn();
+		const plugin = {
+			settings: { hiddenExtensions: [], manualOrder: [] },
+			saveSettingsWithNotice: jest.fn()
+				.mockResolvedValueOnce(false)
+				.mockResolvedValueOnce(true),
+			refreshExplorerViews: jest.fn(),
+			resetExplorerManualOrderViews: jest.fn(),
+		};
+		const tab = new SmartExplorerSettingTab({} as any, plugin as any);
+		const setting = { addText: (build: any) => build({
+			setPlaceholder() { return this; },
+			setValue() { return this; },
+			onChange(callback: (value: string) => void) { onChange.mockImplementation(callback); return this; },
+		}) };
+		(tab as any).addHiddenExtensionsControl(setting);
+
+		onChange("pdf");
+		jest.advanceTimersByTime(500);
+		await Promise.resolve();
+		await Promise.resolve();
+		onChange("png");
+		jest.advanceTimersByTime(500);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(plugin.saveSettingsWithNotice).toHaveBeenCalledTimes(2);
+		expect(plugin.refreshExplorerViews).toHaveBeenCalledTimes(1);
 		jest.useRealTimers();
 	});
 });

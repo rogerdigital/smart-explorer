@@ -68,6 +68,8 @@ function makeView() {
 			manualOrder: [],
 		},
 		saveSettings: jest.fn().mockResolvedValue(undefined),
+		saveSettingsWithNotice: jest.fn().mockResolvedValue(true),
+		flushSettings: jest.fn().mockResolvedValue(undefined),
 	};
 	const view = new SmartExplorerView({ app } as never, plugin as never) as any;
 	const container = view.containerEl.children[1] as HTMLElement;
@@ -101,7 +103,8 @@ describe("SmartExplorerView DOM foundation", () => {
 		expect(first.view.viewMode).toBe("list");
 		expect(second.viewMode).toBe("tree");
 		expect(first.view.plugin.settings.lastViewMode).toBe("list");
-		expect(first.view.plugin.saveSettings).toHaveBeenCalledTimes(1);
+		expect(first.view.plugin.saveSettingsWithNotice).toHaveBeenCalledTimes(1);
+		expect(first.view.plugin.saveSettings).not.toHaveBeenCalled();
 	});
 
 	it("applies current Obsidian element info fields used by the explorer", () => {
@@ -887,5 +890,111 @@ describe("SmartExplorerView windowed list rendering", () => {
 			document.body.removeChild(container);
 			jest.useRealTimers();
 		}
+	});
+});
+
+describe("SmartExplorerView close persistence", () => {
+	it("awaits a pending manual-order save before close completes", async () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.searchRenderScheduler = { cancel: jest.fn() };
+		view.tooltipEl = null;
+		view.virtualList = null;
+		view.dragSortManager = null;
+		view.listContainer = null;
+		view.rebuildTimeout = null;
+		view.saveOrderTimeout = window.setTimeout(() => {}, 10000);
+		const order: string[] = [];
+		view.plugin = {
+			saveSettingsWithNotice: jest.fn(async () => {
+				order.push("save");
+			}),
+			flushSettings: jest.fn(async () => {
+				order.push("flush");
+			}),
+		};
+
+		await view.onClose();
+
+		expect(order).toEqual(["save", "flush"]);
+		expect(view.saveOrderTimeout).toBeNull();
+	});
+});
+
+describe("SmartExplorerView workspace selection sync", () => {
+	it("syncs selection on file-open without scrolling or expanding folders", () => {
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.fileIndex = {
+				getAll: () => [makeRecord("notes/one.md", "md"), makeRecord("notes/two.md", "md")],
+				getFolderPaths: () => ["notes"],
+			};
+			view.viewMode = "list";
+			view.renderList();
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			list.scrollTop = 120;
+
+			let fileOpenHandler: ((file: any) => void) | null = null;
+			view.plugin.app = {
+				vault: { on: jest.fn() },
+				workspace: { on: (_name: string, cb: (file: { path: string } | null) => void) => { fileOpenHandler = cb; } },
+			};
+			view.registerVaultEvents();
+
+			const { TFile } = jest.requireMock("obsidian") as { TFile: new () => any };
+			const openedFile = new TFile();
+			openedFile.path = "notes/two.md";
+			fileOpenHandler!(openedFile);
+			const row = container.querySelector<HTMLElement>('.smart-explorer-row[data-path="notes/two.md"]')!;
+			expect(view.selectedPath).toBe("notes/two.md");
+			expect(row.classList.contains("is-selected")).toBe(true);
+			expect(row.getAttribute("aria-selected")).toBe("true");
+			expect(list.scrollTop).toBe(120);
+			expect(view.treeExpandedPaths.size).toBe(0);
+
+			fileOpenHandler!(null);
+			expect(view.selectedPath).toBeNull();
+			expect(row.classList.contains("is-selected")).toBe(false);
+			expect(row.getAttribute("aria-selected")).toBe("false");
+			expect(list.scrollTop).toBe(120);
+		} finally {
+			document.body.removeChild(container);
+		}
+	});
+
+	it("purges deleted folder subtrees from the index and manual-order reconcile flag", () => {
+		const { view } = makeView();
+		const removeFolder = jest.fn();
+		const addFolder = jest.fn();
+		const scheduleRebuild = jest.fn();
+		view.scheduleRebuild = scheduleRebuild;
+		view.collapseFolderPath = jest.fn();
+		view.fileIndex = { removeFolder, addFolder };
+		let vaultHandlers: Record<string, (file: unknown, oldPath?: string) => void> = {};
+		view.plugin.app = {
+			vault: { on: (name: string, cb: (file: unknown, oldPath?: string) => void) => { vaultHandlers[name] = cb; } },
+			workspace: { on: jest.fn() },
+		};
+		view.registerVaultEvents();
+
+		const folder = { constructor: Object };
+		Object.setPrototypeOf(folder, { [Symbol.toStringTag]: "TFolder" });
+		vaultHandlers.delete!(folder);
+		expect(removeFolder).not.toHaveBeenCalled();
+
+		// Real TFolder instances flow through the instanceof branch.
+		const { TFolder } = jest.requireMock("obsidian") as { TFolder: new () => unknown };
+		const realFolder = new (TFolder as new () => any)();
+		realFolder.path = "gone";
+		vaultHandlers.delete!(realFolder);
+		expect(removeFolder).toHaveBeenCalledWith("gone");
+		expect(view.manualOrderNeedsReconcile).toBe(true);
+
+		const newFolder = new (TFolder as new () => any)();
+		newFolder.path = "created";
+		view.manualOrderNeedsReconcile = false;
+		vaultHandlers.create!(newFolder);
+		expect(addFolder).toHaveBeenCalledWith("created");
+		expect(view.manualOrderNeedsReconcile).toBe(true);
 	});
 });
