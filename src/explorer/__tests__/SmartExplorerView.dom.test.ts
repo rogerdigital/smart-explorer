@@ -684,6 +684,21 @@ describe("SmartExplorerView container focus model", () => {
 		}
 	});
 
+	it("restores the keyboard-active class after a full render", () => {
+		const { view, container } = makeView();
+		setupList(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+
+		keydown(list, { key: "ArrowDown" });
+		expect(view.activeItemPath).toBe("b.md");
+
+		view.renderList();
+
+		const activeRow = container.querySelector<HTMLElement>('[data-path="b.md"]')!;
+		expect(activeRow.classList.contains("is-keyboard-active")).toBe(true);
+		expect(list.getAttribute("aria-activedescendant")).toBe(activeRow.id);
+	});
+
 	it("activates the active file on Enter", () => {
 		const { view, container } = makeView();
 		setupList(view);
@@ -840,6 +855,37 @@ describe("SmartExplorerView windowed list rendering", () => {
 			expect(last!.getAttribute("aria-setsize")).toBe("500");
 		} finally {
 			document.body.removeChild(container);
+		}
+	});
+
+	it("preserves an offscreen active item across a full render", () => {
+		jest.useFakeTimers();
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.fileIndex = {
+				getAll: () => Array.from({ length: 500 }, (_, i) => makeRecord(`f${i}.md`, "md")),
+				getFolderPaths: jest.fn(() => []),
+				get: (path: string) => makeRecord(path, "md"),
+			};
+			view.viewMode = "list";
+			view.renderList();
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			Object.defineProperty(list, "clientHeight", { value: 440, configurable: true });
+			view.setActiveItem("f0.md");
+
+			list.scrollTop = 100 * 44;
+			list.dispatchEvent(new Event("scroll"));
+			jest.runOnlyPendingTimers();
+			expect(container.querySelector('[data-path="f0.md"]')).not.toBeNull();
+
+			view.renderList();
+
+			expect(view.activeItemPath).toBe("f0.md");
+			expect(container.querySelector('[data-path="f0.md"]')).not.toBeNull();
+		} finally {
+			document.body.removeChild(container);
+			jest.useRealTimers();
 		}
 	});
 });

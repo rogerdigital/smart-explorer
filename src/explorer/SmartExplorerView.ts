@@ -911,7 +911,10 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 		const paths = items.map((item) => item.dataset.navPath ?? null);
-		if (this.activeItemPath && paths.includes(this.activeItemPath)) return;
+		if (this.activeItemPath && paths.includes(this.activeItemPath)) {
+			this.setActiveItem(this.activeItemPath);
+			return;
+		}
 		const next = this.selectedPath && paths.includes(this.selectedPath)
 			? this.selectedPath
 			: paths[0] ?? null;
