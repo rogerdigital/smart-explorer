@@ -10,19 +10,19 @@ Built for vaults with hundreds or thousands of notes where the default file tree
 
 | Category | Options |
 |----------|---------|
-| **Browse** | Folder tree by default, with folder counts and compact hover details |
+| **Browse** | Folder tree by default, with folder counts and compact hover details; closed folders render lazily and long flat lists use windowed rendering, so large vaults stay fast |
 | **Create** | Create notes and folders via toolbar, context menu, or command palette — with inline name editing |
 | **Edit** | Rename files inline; extensions stay fixed so only the name changes |
 | **Sort** | Name (A-Z / Z-A), modified date, created date, extension, file size, manual drag order |
 | **Filter** | Search by name/path, extension, file kind (all / markdown / non-markdown / images), date range (1d / 7d / 30d) |
-| **View** | Tree/list toggle; Manual sort automatically uses list mode for direct drag-and-drop |
+| **View** | Tree/list toggle — the mode is remembered between sessions; Manual sort automatically uses list mode for direct drag-and-drop |
 | **Commands** | Open, focus search, reveal active file, new note, new folder — all in the Command Palette |
-| **Keyboard** | Focus search, clear search, move through rows, and open selected files |
+| **Keyboard** | Full keyboard navigation: arrows move through rows, Home/End jump, arrow keys open and close folders, Enter opens files, and `Alt+Arrow` reorders files in Manual mode |
 | **Settings** | Default sort/group mode, hidden extensions, reset manual order |
 
 ### Manual Drag-and-Drop Sorting
 
-Switch to **Manual** sort mode to drag the handle beside a file and reorder it. The starting order matches whatever sort you were viewing ("what you see is what you drag"), shown in a toolbar hint. Use **Undo** to revert the last reorder. The custom order is saved per vault, keeps new files draggable, and persists across sessions. Works on both desktop and mobile.
+Switch to **Manual** sort mode to drag the handle beside a file and reorder it, or keep your hands on the keyboard and use `Alt+ArrowUp` / `Alt+ArrowDown` on the selected file. The starting order matches whatever sort you were viewing ("what you see is what you drag"), shown in a toolbar hint. Use **Undo** to revert the last reorder. The custom order is saved per vault, keeps new files draggable, and persists across sessions. Works on both desktop and mobile.
 
 ## Installation
 
@@ -52,8 +52,10 @@ Switch to **Manual** sort mode to drag the handle beside a file and reorder it. 
 
 - `Cmd/Ctrl+F` focuses the search box
 - `Esc` clears search text or closes the filter row
-- `Arrow Up/Down` moves through file rows
-- `Enter` opens the focused file
+- `Arrow Up/Down` moves through rows; `Home`/`End` jump to the first/last row
+- `Arrow Right/Left` opens/closes the focused folder in tree mode
+- `Enter` or `Space` opens the focused file or toggles the focused folder
+- `Alt+ArrowUp` / `Alt+ArrowDown` moves the selected file in Manual sort mode (announced via screen reader)
 - Command Palette actions: **Smart Explorer: Open**, **Focus search**, **Reveal active file**, **New note**, **New folder**
 
 ## Compatibility
