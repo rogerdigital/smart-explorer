@@ -144,3 +144,7 @@ export function reorderManualOrderByDelta(
 	const dropBoundary = delta < 0 ? target : target + 1;
 	return reorderManualOrder(currentOrder, draggedPath, dropBoundary, sections);
 }
+
+export function sameOrder(a: string[], b: string[]): boolean {
+	return a.length === b.length && a.every((path, index) => path === b[index]);
+}

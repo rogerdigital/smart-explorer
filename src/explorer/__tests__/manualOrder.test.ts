@@ -3,6 +3,7 @@ import {
 	renameManualOrderPaths,
 	reorderManualOrder,
 	reorderManualOrderByDelta,
+	sameOrder,
 } from "../manualOrder";
 import type { FileRecord } from "../../types";
 
@@ -223,5 +224,13 @@ describe("reorderManualOrderByDelta", () => {
 
 		expect(reorderManualOrderByDelta(["a.md", "b.md"], "b.md", -1, sections))
 			.toEqual(["b.md", "a.md"]);
+	});
+});
+
+describe("sameOrder", () => {
+	it("compares arrays element-wise", () => {
+		expect(sameOrder(["a.md"], ["a.md"])).toBe(true);
+		expect(sameOrder(["a.md", "b.md"], ["b.md", "a.md"])).toBe(false);
+		expect(sameOrder(["a.md"], ["a.md", "b.md"])).toBe(false);
 	});
 });

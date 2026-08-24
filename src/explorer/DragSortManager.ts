@@ -2,7 +2,6 @@ import { Platform } from "obsidian";
 import { calculateDropIndexFromRowBounds } from "./dropIndex";
 
 export type DragSortOptions = {
-	getRowHeight: () => number;
 	onReorder: (draggedPath: string, toIndex: number, sectionId?: string) => void;
 };
 
@@ -20,6 +19,11 @@ export class DragSortManager {
 	private draggedRow: HTMLElement | null = null;
 	private autoScrollTimer: number | null = null;
 	private rows: { el: HTMLElement; path: string; sectionId?: string }[] = [];
+	// Row geometry is measured once at drag start and reused for every
+	// pointer/auto-scroll event; offsets stay valid because they are relative
+	// to the container, not the viewport.
+	private rowBounds: { top: number; bottom: number }[] = [];
+	private containerTop = 0;
 	private currentDropIndex: number | null = null;
 	private currentDropSectionId: string | undefined;
 	private lastClientY: number | null = null;
@@ -74,6 +78,7 @@ export class DragSortManager {
 		handle.addEventListener("dragstart", (e) => {
 			this.draggedPath = path;
 			this.draggedRow = row;
+			this.refreshRowBounds();
 			row.classList.add("is-dragging");
 			e.dataTransfer!.effectAllowed = "move";
 			e.dataTransfer!.setData("text/plain", path);
@@ -149,6 +154,7 @@ export class DragSortManager {
 		this.isTouchDragging = true;
 		this.draggedPath = path;
 		this.draggedRow = row;
+		this.refreshRowBounds();
 		row.classList.add("is-dragging");
 		navigator.vibrate?.(50);
 
@@ -231,58 +237,31 @@ export class DragSortManager {
 		this.showIndicatorAtIndex(dropIndex);
 	}
 
-	private getDropIndexFromClientY(clientY: number): number {
-		if (!this.isVirtualMode()) {
-			return calculateDropIndexFromRowBounds(
-				clientY,
-				this.rows.map((row) => {
-					const rect = row.el.getBoundingClientRect();
-					return {
-						top: rect.top,
-						bottom: rect.bottom,
-					};
-				}),
-			);
-		}
-
-		const rect = this.container.getBoundingClientRect();
-		const y = clientY - rect.top + this.container.scrollTop;
-		return this.getDropIndex(y);
+	private refreshRowBounds(): void {
+		// Measured once per drag: container-relative offsets stay valid under
+		// auto-scroll, but an external layout shift mid-drag (rare in a side
+		// pane) would require a new drag to re-sync.
+		this.containerTop = this.container.getBoundingClientRect().top;
+		this.rowBounds = this.rows.map((row) => ({
+			top: row.el.offsetTop,
+			bottom: row.el.offsetTop + row.el.offsetHeight,
+		}));
 	}
 
-	private getDropIndex(scrollY: number): number {
-		const rowHeight = this.opts.getRowHeight();
-		const totalRows = this.rows.length;
-		if (totalRows === 0) return 0;
-
-		// For virtual list or flat mode, use math
-		if (this.isVirtualMode()) {
-			const idx = Math.round(scrollY / rowHeight);
-			return Math.max(0, Math.min(totalRows, idx));
-		}
-
-		return calculateDropIndexFromRowBounds(
-			scrollY,
-			this.rows.map((row) => ({
-				top: row.el.offsetTop,
-				bottom: row.el.offsetTop + row.el.offsetHeight,
-			})),
-		);
+	private getDropIndexFromClientY(clientY: number): number {
+		const y = clientY - this.containerTop + this.container.scrollTop;
+		return calculateDropIndexFromRowBounds(y, this.rowBounds);
 	}
 
 	private showIndicatorAtIndex(index: number) {
-		const rowHeight = this.opts.getRowHeight();
 		let top: number;
 
-		if (this.isVirtualMode()) {
-			top = index * rowHeight;
-		} else if (this.rows.length === 0) {
+		if (this.rowBounds.length === 0) {
 			top = 0;
-		} else if (index >= this.rows.length) {
-			const lastRow = this.rows[this.rows.length - 1]!.el;
-			top = lastRow.offsetTop + lastRow.offsetHeight;
+		} else if (index >= this.rowBounds.length) {
+			top = this.rowBounds[this.rowBounds.length - 1]!.bottom;
 		} else {
-			top = this.rows[index]!.el.offsetTop;
+			top = this.rowBounds[index]!.top;
 		}
 
 		this.indicator.style.top = `${top}px`;
@@ -298,10 +277,6 @@ export class DragSortManager {
 			return this.rows[this.rows.length - 1]?.sectionId;
 		}
 		return this.rows[index]?.sectionId;
-	}
-
-	private isVirtualMode(): boolean {
-		return this.container.querySelector(".smart-explorer-virtual-content") !== null;
 	}
 
 	private handleAutoScroll(clientY: number) {
@@ -338,6 +313,7 @@ export class DragSortManager {
 		}
 		this.draggedPath = null;
 		this.draggedRow = null;
+		this.rowBounds = [];
 		this.currentDropIndex = null;
 		this.currentDropSectionId = undefined;
 		this.lastClientY = null;

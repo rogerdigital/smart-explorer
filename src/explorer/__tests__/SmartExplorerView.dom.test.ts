@@ -29,6 +29,7 @@ jest.mock(
 );
 
 import { installObsidianDomShim, mockElementBox } from "../../test-utils/obsidianDom";
+import { buildTree } from "../TreeModel";
 import type { FileRecord } from "../../types";
 import { setIcon } from "obsidian";
 import { SmartExplorerView } from "../SmartExplorerView";
@@ -683,6 +684,21 @@ describe("SmartExplorerView container focus model", () => {
 		}
 	});
 
+	it("restores the keyboard-active class after a full render", () => {
+		const { view, container } = makeView();
+		setupList(view);
+		const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+
+		keydown(list, { key: "ArrowDown" });
+		expect(view.activeItemPath).toBe("b.md");
+
+		view.renderList();
+
+		const activeRow = container.querySelector<HTMLElement>('[data-path="b.md"]')!;
+		expect(activeRow.classList.contains("is-keyboard-active")).toBe(true);
+		expect(list.getAttribute("aria-activedescendant")).toBe(activeRow.id);
+	});
+
 	it("activates the active file on Enter", () => {
 		const { view, container } = makeView();
 		setupList(view);
@@ -759,6 +775,117 @@ describe("SmartExplorerView container focus model", () => {
 			expect(document.activeElement).toBe(list);
 		} finally {
 			document.body.removeChild(container);
+		}
+	});
+});
+
+describe("SmartExplorerView lazy tree mounting", () => {
+	it("does not mount descendants of a closed folder until it opens", () => {
+		const view = Object.create(SmartExplorerView.prototype) as any;
+		view.query = {
+			searchText: "", sort: "name-asc", group: "none",
+			extension: null, fileKind: "all", modifiedWithinDays: null,
+		};
+		view.treeExpandedPaths = new Set<string>();
+		view.selectedPath = null;
+		view.selectedFolderPath = null;
+		view.activeItemPath = null;
+		view.inlineEdit = null;
+		view.updateTreeToggleControl = jest.fn();
+		view.showTooltip = jest.fn();
+		view.hideTooltip = jest.fn();
+		view.attachLongPressMenu = jest.fn();
+		view.plugin = { settings: { manualOrder: [] } };
+		view.getItemDomId = SmartExplorerView.prototype["getItemDomId"];
+		view.createRowElement = (record: FileRecord) => {
+			const row = document.createElement("div");
+			row.className = "smart-explorer-row";
+			row.dataset.path = record.path;
+			return row;
+		};
+		const tree = buildTree(
+			Array.from({ length: 1000 }, (_, index) => makeRecord(`closed/file-${index}.md`, "md")),
+			view.query,
+		);
+		const folder = tree.children[0] as any;
+
+		const details = view.createTreeNodeElement(folder) as HTMLDetailsElement;
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(0);
+
+		details.open = true;
+		details.dispatchEvent(new Event("toggle"));
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(1000);
+
+		details.open = false;
+		details.dispatchEvent(new Event("toggle"));
+		expect(details.querySelectorAll(".smart-explorer-row")).toHaveLength(0);
+	});
+});
+
+describe("SmartExplorerView windowed list rendering", () => {
+	it("windowes large flat lists and keeps keyboard state on the container", () => {
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.fileIndex = {
+				getAll: () => Array.from({ length: 500 }, (_, i) => makeRecord(`f${i}.md`, "md")),
+				getFolderPaths: jest.fn(() => []),
+				get: (path: string) => makeRecord(path, "md"),
+			};
+			view.viewMode = "list";
+			view.renderList();
+
+			expect(container.querySelectorAll(".smart-explorer-row").length).toBeLessThanOrEqual(21);
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			list.focus();
+
+			list.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+			expect(view.activeItemPath).toBe("f1.md");
+			expect(document.activeElement).toBe(list);
+			const row = container.querySelector<HTMLElement>('[data-path="f1.md"]');
+			expect(row).not.toBeNull();
+			expect(list.getAttribute("aria-activedescendant")).toBe(row!.id);
+
+			list.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }));
+			expect(view.activeItemPath).toBe("f499.md");
+			const last = container.querySelector<HTMLElement>('[data-path="f499.md"]');
+			expect(last).not.toBeNull();
+			expect(list.getAttribute("aria-activedescendant")).toBe(last!.id);
+			expect(last!.getAttribute("aria-posinset")).toBe("500");
+			expect(last!.getAttribute("aria-setsize")).toBe("500");
+		} finally {
+			document.body.removeChild(container);
+		}
+	});
+
+	it("preserves an offscreen active item across a full render", () => {
+		jest.useFakeTimers();
+		const { view, container } = makeView();
+		document.body.appendChild(container);
+		try {
+			view.fileIndex = {
+				getAll: () => Array.from({ length: 500 }, (_, i) => makeRecord(`f${i}.md`, "md")),
+				getFolderPaths: jest.fn(() => []),
+				get: (path: string) => makeRecord(path, "md"),
+			};
+			view.viewMode = "list";
+			view.renderList();
+			const list = container.querySelector<HTMLElement>(".smart-explorer-list")!;
+			Object.defineProperty(list, "clientHeight", { value: 440, configurable: true });
+			view.setActiveItem("f0.md");
+
+			list.scrollTop = 100 * 44;
+			list.dispatchEvent(new Event("scroll"));
+			jest.runOnlyPendingTimers();
+			expect(container.querySelector('[data-path="f0.md"]')).not.toBeNull();
+
+			view.renderList();
+
+			expect(view.activeItemPath).toBe("f0.md");
+			expect(container.querySelector('[data-path="f0.md"]')).not.toBeNull();
+		} finally {
+			document.body.removeChild(container);
+			jest.useRealTimers();
 		}
 	});
 });
