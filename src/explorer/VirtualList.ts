@@ -45,7 +45,9 @@ export class VirtualList {
 	// The active row stays mounted even when scrolled outside the window, so
 	// the container's aria-activedescendant always references a live node.
 	setPinnedKey(key: string | null): void {
+		if (this.pinnedKey === key) return;
 		this.pinnedKey = key;
+		this.renderWindow();
 	}
 
 	scrollTo(top: number): void {
@@ -140,9 +142,9 @@ export class VirtualList {
 			element.style.setProperty("transform", `translateY(${index * this.rowHeight}px)`);
 			element.setAttribute("aria-posinset", String(index + 1));
 			element.setAttribute("aria-setsize", String(total));
-			if (element.parentElement !== this.content) {
-				this.content.appendChild(element);
-			}
+			// appendChild also moves an existing node, keeping DOM order aligned
+			// with logical row order after scrolling back toward the start.
+			this.content.appendChild(element);
 		}
 	}
 }

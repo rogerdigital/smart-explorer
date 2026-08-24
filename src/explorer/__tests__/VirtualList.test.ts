@@ -158,4 +158,36 @@ describe("VirtualList windowed rendering", () => {
 
 		list.destroy();
 	});
+
+	it("mounts a newly pinned offscreen key immediately", () => {
+		const container = makeContainer(440);
+		const list = new VirtualList(container, 44);
+		list.setItems(makeItems(1000));
+
+		list.setPinnedKey("k500");
+
+		expect(container.querySelector('[data-key="k500"]')).not.toBeNull();
+
+		list.destroy();
+	});
+
+	it("keeps mounted rows in logical DOM order after reverse scrolling", () => {
+		const container = makeContainer(440);
+		const list = new VirtualList(container, 44);
+		list.setItems(makeItems(1000));
+
+		container.scrollTop = 15 * 44;
+		container.dispatchEvent(new Event("scroll"));
+		jest.runOnlyPendingTimers();
+		container.scrollTop = 5 * 44;
+		container.dispatchEvent(new Event("scroll"));
+		jest.runOnlyPendingTimers();
+
+		const mountedIndexes = Array.from(
+			container.querySelectorAll<HTMLElement>(".smart-explorer-virtual-row"),
+		).map((row) => Number(row.dataset.key?.slice(1)));
+		expect(mountedIndexes).toEqual([...mountedIndexes].sort((a, b) => a - b));
+
+		list.destroy();
+	});
 });
