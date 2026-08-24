@@ -105,15 +105,13 @@ export class VirtualList {
 	}
 
 	private renderWindow() {
-		if (this.items.length === 0) {
+		const total = this.items.length;
+		this.content.style.setProperty("height", `${total * this.rowHeight}px`);
+		if (total === 0) {
 			this.mounted.forEach((element) => element.remove());
 			this.mounted.clear();
-			// Dynamic by design: content height tracks the item count.
-		// eslint-disable-next-line obsidianmd/no-static-styles-assignment
-		this.content.style.setProperty("height", "0px");
 			return;
 		}
-		const total = this.items.length;
 		const [start, end] = this.currentWindow();
 		const wanted = new Map<string, number>();
 		for (let i = start; i < end; i++) {
@@ -129,7 +127,6 @@ export class VirtualList {
 				this.mounted.delete(key);
 			}
 		}
-		this.content.style.setProperty("height", `${total * this.rowHeight}px`);
 		const ordered = Array.from(wanted.entries()).sort((a, b) => a[1] - b[1]);
 		for (const [key, index] of ordered) {
 			let element = this.mounted.get(key);
