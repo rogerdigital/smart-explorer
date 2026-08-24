@@ -3,17 +3,18 @@
 Obsidian plugin — alternative side-pane file explorer with tree/list browsing, sorting, grouping, filtering, and manual order.
 
 - Plugin ID: `smart-explorer`
-- Current version: `0.5.0`
+- Current version: `0.5.4`
 - Min Obsidian version: `1.7.2`
 
 ## Commands
 
 ```bash
-npm run dev       # esbuild watch mode
-npm run build     # tsc check + esbuild production
-npm test          # jest with ts-jest
-npm run lint      # eslint
-npm run verify    # lint + production build + all tests
+npm run dev            # esbuild watch mode
+npm run build          # tsc check + esbuild production
+npm test               # jest with ts-jest (node + jsdom suites)
+npm run lint           # eslint
+npm run test:fixture   # fixture-script safety tests (node --test)
+npm run verify         # lint + production build + all tests + fixture tests
 ```
 
 ## Architecture
@@ -35,6 +36,8 @@ src/explorer/sorters.ts             Pure sorting functions (8 modes, path tie-br
 src/explorer/groupers.ts            Pure grouping functions (5 modes: none, folder, extension, modified-month, top-folder)
 src/explorer/filters.ts             Pure filter functions (search, extension, file kind, date range)
 src/explorer/filterState.ts         Clear/detect active search and filters
+src/explorer/queryNormalization.ts Shared search-text normalization for filters + state
+src/explorer/focusNavigation.ts    Pure key → focus/expand/activate resolver for list/tree rows
 src/explorer/fileRow.ts             File row display formatting helpers
 src/explorer/creationPath.ts        Pure helpers for new note/folder target paths
 src/explorer/treeFolderInfo.ts      Tree folder hover metadata helpers
@@ -43,14 +46,20 @@ src/explorer/revealPath.ts          Pure path-reveal helpers for active file / s
 src/explorer/touchLongPress.ts      Pure touch long-press threshold helpers
 src/explorer/viewMode.ts            Resolves effective tree/list mode + manual seed sort
 
+src/explorer/rowHeight.ts            List row-height constants (44px desktop / 52px mobile)
 src/settings/settings.ts            Settings type + defaults
+src/settings/settings-normalization.ts  Strict validation/migration of persisted settings
 src/settings/settings-tab.ts        PluginSettingTab UI
 src/settings/settings-helpers.ts    Sort/group option lists (shared by toolbar + settings)
+src/test-utils/obsidianDom.ts       jsdom shims (Obsidian DOM helpers, deterministic layout)
 
-src/explorer/__tests__/*.test.ts    Unit tests for pure explorer helpers and models
+src/explorer/__tests__/*.test.ts    Unit/DOM/integration tests for explorer helpers and models
+scripts/prepare-large-vault-fixture.mjs  Marker-protected synthetic fixture generator
 ```
 
-**List data flow:** `FileIndex.build()` → hidden-extension filter → `buildSections(records, query)` → filter → sort → group → `VirtualList` render
+**List data flow:** `FileIndex.build()` → hidden-extension filter → `buildSections(records, query)` → filter → sort → group → direct render, or keyed windowed render via `VirtualList` above 200 rows
+
+**Keyboard model:** the list container holds the single tab stop and DOM focus; the active row is tracked via `aria-activedescendant` (pinned across windowed renders). Selection highlight follows `workspace.file-open` without auto-reveal.
 
 **Tree data flow:** `FileIndex.build()` → hidden-extension filter → `buildTree(records, query)` → filter → folder tree sort → recursive tree render
 
@@ -64,6 +73,17 @@ src/explorer/__tests__/*.test.ts    Unit tests for pure explorer helpers and mod
 - No network requests. Vault writes are limited to explicit user actions: creating notes/folders and saving plugin settings/manual order.
 - Obsidian CSS variables for theming, prefixed with `.smart-explorer-`
 - Tests use Jest with ts-jest, `__tests__` subdirectory per module
+
+## Test vault and large-vault fixture
+
+`/Users/Roger/my-vault` is the dedicated local development/test vault (the plugin folder symlinks to a repo checkout). For large-vault testing:
+
+```bash
+node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --files 5000   # create
+node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --remove      # remove
+```
+
+The script only touches `<vault>/.smart-explorer-large-vault-fixture` and refuses to delete anything without its marker file.
 
 ## Git workflow
 
