@@ -55,6 +55,17 @@ const runtimeGlobals = window as Window & TestGlobals;
 runtimeGlobals.activeDocument ??= runtimeGlobals.document;
 const activeTestDocument = runtimeGlobals.activeDocument ?? runtimeGlobals.document;
 
+const nativeCreateElement: (
+	this: Document,
+	tag: string,
+) => HTMLElement = Reflect.get(activeTestDocument, "createElement");
+
+function createNativeElement<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K];
+function createNativeElement(tag: string): HTMLElement;
+function createNativeElement(tag: string): HTMLElement {
+	return Reflect.apply(nativeCreateElement, activeTestDocument, [tag]);
+}
+
 function normalizeClasses(cls?: string | string[]): string[] {
 	if (!cls) return [];
 
@@ -113,12 +124,14 @@ function applyInfo<T extends HTMLElement>(element: T, info?: TestElementInfo): T
 	return element;
 }
 
+// This shim defines Obsidian's element helpers, so it must use native DOM
+// creation at this boundary instead of recursively calling those helpers.
 const createEl: TestCreateEl = (tag, info) =>
-	applyInfo(activeTestDocument.createElement(tag), info);
+	applyInfo(createNativeElement(tag), info);
 const createDiv: TestCreateDiv = (info) =>
-	applyInfo(activeTestDocument.createElement("div"), info);
+	applyInfo(createNativeElement("div"), info);
 const createSpan: TestCreateSpan = (info) =>
-	applyInfo(activeTestDocument.createElement("span"), info);
+	applyInfo(createNativeElement("span"), info);
 
 const elementPrototype = HTMLElement.prototype as HTMLElement & TestElementMethods;
 

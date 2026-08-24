@@ -138,6 +138,14 @@ describe("SmartExplorerView DOM foundation", () => {
 		expect(link.textContent).toBe("Open docs");
 	});
 
+	it("preserves native HTML tag normalization in the element shim", () => {
+		const createAnyTag = globalThis.createEl as (tag: string) => HTMLElement;
+		const element = createAnyTag("DIV");
+
+		expect(element).toBeInstanceOf(HTMLDivElement);
+		expect(element.localName).toBe("div");
+	});
+
 	it("creates and resets Obsidian-style elements with deterministic layout", () => {
 		const parent = globalThis.createDiv({ cls: "parent" });
 		const child = parent.createDiv({
