@@ -84,13 +84,15 @@ export async function createFixture(vault, files) {
 		{ ext: "docx", size: 0 },
 	];
 	let created = 0;
+	let attachmentIndex = 0;
 	for (let folderIndex = 0; folderIndex < FOLDER_COUNT && created < files; folderIndex++) {
 		const folder = path.join(dir, `folder-${String(folderIndex).padStart(3, "0")}`);
 		await mkdir(folder);
 		for (let fileIndex = 0; fileIndex < perFolder && created < files; fileIndex++) {
 			const isAttachment = fileIndex % 50 === 49 && fileIndex > 0;
 			if (isAttachment) {
-				const attachment = attachments[Math.floor(fileIndex / 50) % attachments.length];
+				const attachment = attachments[attachmentIndex % attachments.length];
+				attachmentIndex++;
 				await writeFile(path.join(folder, `attachment-${fileIndex}.${attachment.ext}`), "");
 			} else {
 				await writeFile(path.join(folder, `note-${fileIndex}.md`), "# Fixture note\n");

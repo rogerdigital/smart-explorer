@@ -175,6 +175,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 			jest.advanceTimersByTime(300);
 		}
 		expect(harness.view.fileIndex.getAll()).toHaveLength(3);
+		harness.view.selectedPath = "gone/nested/b.md";
 
 		harness.remove("gone/a.md");
 		harness.remove("gone/nested/b.md");
@@ -184,6 +185,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 		expect(harness.view.fileIndex.getAll().map((record: any) => record.path)).toEqual(["keep.md"]);
 		expect(harness.container.querySelector('[data-path="gone/a.md"]')).toBeNull();
 		expect(harness.container.querySelector('[data-path="gone/nested/b.md"]')).toBeNull();
+		expect(harness.view.selectedPath).toBeNull();
 	});
 
 	it("rename folder rewrites child paths and manual order", () => {
@@ -193,11 +195,13 @@ describe("SmartExplorerView lifecycle integration", () => {
 			harness.add(path);
 		}
 		harness.view.fileIndex.build();
+		harness.view.selectedPath = "old/nested/b.md";
 		harness.vaultHandlers.rename!(makeTFolder("new"), "old");
 		jest.advanceTimersByTime(300);
 
 		expect(harness.plugin.settings.manualOrder).toEqual(["keep.md", "new/a.md", "new/nested/b.md"]);
 		expect(harness.view.fileIndex.get("new/nested/b.md")).toBeDefined();
+		expect(harness.view.selectedPath).toBe("new/nested/b.md");
 	});
 
 	it("coalesces an event burst into one render", () => {
@@ -249,6 +253,33 @@ describe("SmartExplorerView lifecycle integration", () => {
 		await harness.view.openFile("broken.md");
 
 		expect(harness.notices.some((message) => message.includes("leaf exploded"))).toBe(true);
+	});
+
+	it("reports Electron shell failures instead of rejecting or throwing", async () => {
+		const harness = makeHarness();
+		(harness.view.app.vault as any).adapter = { getBasePath: () => "/vault" };
+		const originalRequire = (window as Window & { require?: unknown }).require;
+		(window as Window & { require?: unknown }).require = () => ({
+			shell: {
+				openPath: async () => { throw new Error("open exploded"); },
+				showItemInFolder: () => { throw new Error("reveal exploded"); },
+			},
+		});
+		try {
+			await expect(harness.view.openInDefaultApp("broken.pdf")).resolves.toBeUndefined();
+			await expect(harness.view.revealInFinder("broken.pdf")).resolves.toBeUndefined();
+
+			expect(harness.notices).toEqual(expect.arrayContaining([
+				expect.stringContaining("open exploded"),
+				expect.stringContaining("reveal exploded"),
+			]));
+		} finally {
+			if (originalRequire === undefined) {
+				Reflect.deleteProperty(window, "require");
+			} else {
+				(window as Window & { require?: unknown }).require = originalRequire;
+			}
+		}
 	});
 
 	it("resolves a pending manual-order save before close completes", async () => {

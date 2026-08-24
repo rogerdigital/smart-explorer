@@ -243,6 +243,9 @@ export class SmartExplorerView extends ItemView {
 					this.selectedPath = null;
 				}
 			} else if (file instanceof TFolder) {
+				if (this.selectedPath?.startsWith(`${file.path}/`)) {
+					this.selectedPath = null;
+				}
 				if (this.selectedFolderPath === file.path || this.selectedFolderPath?.startsWith(`${file.path}/`)) {
 					this.selectedFolderPath = null;
 				}
@@ -1440,6 +1443,9 @@ export class SmartExplorerView extends ItemView {
 		if (this.selectedFolderPath) {
 			this.selectedFolderPath = renameNestedPath(this.selectedFolderPath, oldPath, newPath);
 		}
+		if (this.selectedPath) {
+			this.selectedPath = renameNestedPath(this.selectedPath, oldPath, newPath);
+		}
 	}
 
 	private updateManualOrderAfterRename(oldPath: string, newPath: string) {
@@ -1506,24 +1512,28 @@ export class SmartExplorerView extends ItemView {
 	}
 
 	private async openInDefaultApp(path: string) {
-		const shell = getElectronShell();
-		const absolutePath = this.getAbsoluteVaultPath(path);
-		if (!shell || !absolutePath) {
-			new Notice("Open in default app is only available for local desktop vaults.");
-			return;
-		}
-		const error = await shell.openPath(absolutePath);
-		if (error) new Notice(`Could not open in default app: ${error}`);
+		await this.runAction(async () => {
+			const shell = getElectronShell();
+			const absolutePath = this.getAbsoluteVaultPath(path);
+			if (!shell || !absolutePath) {
+				new Notice("Open in default app is only available for local desktop vaults.");
+				return;
+			}
+			const error = await shell.openPath(absolutePath);
+			if (error) new Notice(`Could not open in default app: ${error}`);
+		}, "Could not open in default app");
 	}
 
-	private revealInFinder(path: string) {
-		const shell = getElectronShell();
-		const absolutePath = this.getAbsoluteVaultPath(path);
-		if (!shell || !absolutePath) {
-			new Notice("Reveal in finder is only available for local desktop vaults.");
-			return;
-		}
-		shell.showItemInFolder(absolutePath);
+	private async revealInFinder(path: string) {
+		await this.runAction(async () => {
+			const shell = getElectronShell();
+			const absolutePath = this.getAbsoluteVaultPath(path);
+			if (!shell || !absolutePath) {
+				new Notice("Reveal in finder is only available for local desktop vaults.");
+				return;
+			}
+			shell.showItemInFolder(absolutePath);
+		}, "Could not reveal in finder");
 	}
 
 	private getAbsoluteVaultPath(path: string): string | null {
@@ -1810,7 +1820,9 @@ export class SmartExplorerView extends ItemView {
 			}),
 		);
 		menu.addItem((item) =>
-			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => this.revealInFinder(record.path)),
+			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => {
+				void this.revealInFinder(record.path);
+			}),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
@@ -1852,7 +1864,9 @@ export class SmartExplorerView extends ItemView {
 			item.setTitle("Copy path").setIcon("copy").onClick(() => this.copyPath(folderPath)),
 		);
 		menu.addItem((item) =>
-			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => this.revealInFinder(folderPath)),
+			item.setTitle("Reveal in finder").setIcon("folder-search").onClick(() => {
+				void this.revealInFinder(folderPath);
+			}),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>

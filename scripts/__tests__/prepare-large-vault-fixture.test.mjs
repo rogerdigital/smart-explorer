@@ -82,6 +82,25 @@ test("a temp-directory fixture creates and removes exactly its own subtree", asy
 	await rm(vault, { recursive: true });
 });
 
+test("a 5000-file fixture rotates through every attachment format", async () => {
+	const vault = await mkdtemp(path.join(tmpdir(), "se-fixture-"));
+	try {
+		await createFixture(vault, 5000);
+		const fixture = resolveFixturePath(vault);
+		const extensions = new Set();
+		for (const folder of await readdir(fixture)) {
+			if (!folder.startsWith("folder-")) continue;
+			for (const file of await readdir(path.join(fixture, folder))) {
+				extensions.add(path.extname(file).slice(1));
+			}
+		}
+
+		assert.deepEqual([...extensions].sort(), ["docx", "md", "pdf", "png"]);
+	} finally {
+		await rm(vault, { recursive: true });
+	}
+});
+
 async function readFileSafe(file) {
 	const { readFile } = await import("node:fs/promises");
 	return readFile(file, "utf8");
