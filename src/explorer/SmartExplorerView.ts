@@ -264,11 +264,11 @@ export class SmartExplorerView extends ItemView {
 				if (this.selectedPath === oldPath) {
 					this.selectedPath = file.path;
 				}
-				this.updateManualOrderAfterRename(oldPath, file.path);
+				this.updateManualOrderUndoAfterRename(oldPath, file.path);
 			} else if (file instanceof TFolder) {
 				this.updateFolderPathState(oldPath, file.path);
 				this.fileIndex.renameFolder(oldPath, file.path);
-				this.updateManualOrderAfterRename(oldPath, file.path);
+				this.updateManualOrderUndoAfterRename(oldPath, file.path);
 			}
 			this.scheduleRebuild();
 		}));
@@ -1448,14 +1448,10 @@ export class SmartExplorerView extends ItemView {
 		}
 	}
 
-	private updateManualOrderAfterRename(oldPath: string, newPath: string) {
-		const order = this.plugin.settings.manualOrder;
-		const nextOrder = renameManualOrderPaths(order, oldPath, newPath);
-		if (nextOrder === order) return;
-
-		this.plugin.settings.manualOrder = nextOrder;
-		this.buildManualOrderIndex();
-		this.scheduleSaveOrder();
+	private updateManualOrderUndoAfterRename(oldPath: string, newPath: string) {
+		this.manualOrderUndoStack = this.manualOrderUndoStack.map((order) =>
+			renameManualOrderPaths(order, oldPath, newPath),
+		);
 	}
 
 	revealActiveFile() {
@@ -1568,7 +1564,7 @@ export class SmartExplorerView extends ItemView {
 			return;
 		}
 		try {
-			await this.app.vault.rename(file, nextPath);
+			await this.app.fileManager.renameFile(file, nextPath);
 			this.inlineEdit = null;
 			this.selectedPath = file instanceof TFile ? nextPath : null;
 			this.selectedFolderPath = file instanceof TFolder ? nextPath : null;
@@ -1711,7 +1707,8 @@ export class SmartExplorerView extends ItemView {
 		const previousOrder = this.manualOrderUndoStack.pop();
 		if (!previousOrder) return;
 		this.plugin.settings.manualOrder = previousOrder;
-		this.buildManualOrderIndex();
+		this.initializeManualOrder(this.fileIndex.getAll());
+		this.manualOrderNeedsReconcile = false;
 		this.renderList();
 		this.scheduleSaveOrder();
 		this.updateManualOrderControls();

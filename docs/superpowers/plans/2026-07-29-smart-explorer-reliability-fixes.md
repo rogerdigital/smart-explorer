@@ -1,5 +1,7 @@
 # Smart Explorer Reliability Fixes Implementation Plan
 
+> **Status (2026-09-13):** This is a historical implementation plan. Its checkboxes are not the current delivery ledger and do not establish runtime acceptance. Follow the [1.0 release-readiness plan](2026-09-12-smart-explorer-1.0-release-readiness.md) and [candidate evidence report](../../verification/1.0.0-readiness.md) for current scope, results, and remaining gates.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix all confirmed manual-order, search/reveal, tree-performance, CI, and release-safety problems without expanding Smart Explorer's product scope.

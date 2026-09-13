@@ -25,6 +25,10 @@ test("missing --vault fails", () => {
 	expectFailure(() => validateOptions(parsed({ files: "5000" })), "missing --vault");
 });
 
+test("fixture content lives in a visible directory that Obsidian can index", () => {
+	assert.equal(path.basename(resolveFixturePath("/tmp/vault")), "smart-explorer-large-vault-fixture");
+});
+
 test("missing --files fails without --remove", () => {
 	expectFailure(() => validateOptions(parsed({ vault: "/tmp/x" })), "missing --files");
 });
@@ -66,7 +70,7 @@ test("a temp-directory fixture creates and removes exactly its own subtree", asy
 
 	const fixture = resolveFixturePath(vault);
 	const entries = await readdir(vault);
-	assert.ok(entries.includes(".smart-explorer-large-vault-fixture"));
+	assert.ok(entries.includes("smart-explorer-large-vault-fixture"));
 	assert.ok(entries.includes("untouched.md"));
 
 	const fixtureEntries = await readdir(fixture);

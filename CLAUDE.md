@@ -3,7 +3,7 @@
 Obsidian plugin — alternative side-pane file explorer with tree/list browsing, sorting, grouping, filtering, and manual order.
 
 - Plugin ID: `smart-explorer`
-- Current version: `0.5.4`
+- Current version: `0.6.1`
 - Min Obsidian version: `1.7.2`
 
 ## Commands
@@ -13,8 +13,9 @@ npm run dev            # esbuild watch mode
 npm run build          # tsc check + esbuild production
 npm test               # jest with ts-jest (node + jsdom suites)
 npm run lint           # eslint
+npm run test:release   # release-validator and workflow tests (node --test)
 npm run test:fixture   # fixture-script safety tests (node --test)
-npm run verify         # lint + production build + all tests + fixture tests
+npm run verify         # lint + production build + Jest + release + fixture tests
 ```
 
 ## Architecture
@@ -57,20 +58,20 @@ src/explorer/__tests__/*.test.ts    Unit/DOM/integration tests for explorer help
 scripts/prepare-large-vault-fixture.mjs  Marker-protected synthetic fixture generator
 ```
 
-**List data flow:** `FileIndex.build()` → hidden-extension filter → `buildSections(records, query)` → filter → sort → group → direct render, or keyed windowed render via `VirtualList` above 200 rows
+**List data flow:** `FileIndex.build()` → hidden-extension filter → `buildSections(records, query)` → filter → sort → group → direct render, or keyed windowed render via `VirtualList` above 200 rows for ungrouped, non-manual lists
 
 **Keyboard model:** the list container holds the single tab stop and DOM focus; the active row is tracked via `aria-activedescendant` (pinned across windowed renders). Selection highlight follows `workspace.file-open` without auto-reveal.
 
 **Tree data flow:** `FileIndex.build()` → hidden-extension filter → `buildTree(records, query)` → filter → folder tree sort → recursive tree render
 
-**Manual sort flow:** Manual sort resolves to list mode, initializes `settings.manualOrder`, attaches `DragSortManager` to row handles, and persists reordered paths through plugin settings.
+**Manual sort flow:** Manual sort resolves to ungrouped list mode, initializes `settings.manualOrder`, attaches `DragSortManager` to row handles, and persists reordered paths through plugin settings. The plugin owns one lifetime vault-rename listener that migrates shared manual-order paths even with no explorer panes open. Each view migrates its own Undo snapshots and reconciles Undo against its complete FileIndex. Undo reverses ordering only; it does not undo file operations. Renames while the plugin is disabled or Obsidian is not running cannot reliably preserve path-based order.
 
 ## Conventions
 
 - Sorters, groupers, filters, tree models, view-mode helpers, filter-state helpers, and manual-order helpers are pure functions — testable without Obsidian
 - FileIndex is the single source of truth for vault file data
-- Vault events (create/delete/rename/modify) update FileIndex incrementally, debounced at 300ms
-- No network requests. Vault writes are limited to explicit user actions: creating notes/folders and saving plugin settings/manual order.
+- Vault events (create/delete/rename/modify) update FileIndex incrementally; view rebuilds are debounced at 300ms
+- No network requests. Explicit user actions can create notes or folders, rename files or folders, and move items to the configured trash. Renaming follows Obsidian's internal-link update preference. Plugin settings and manual order are saved locally, including path maintenance after vault renames while the plugin is enabled.
 - Obsidian CSS variables for theming, prefixed with `.smart-explorer-`
 - Tests use Jest with ts-jest, `__tests__` subdirectory per module
 
@@ -83,7 +84,7 @@ node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --fil
 node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --remove      # remove
 ```
 
-The script only touches `<vault>/.smart-explorer-large-vault-fixture` and refuses to delete anything without its marker file.
+The script only touches `<vault>/smart-explorer-large-vault-fixture` and refuses to delete anything without its marker file.
 
 ## Git workflow
 
@@ -106,9 +107,9 @@ The script only touches `<vault>/.smart-explorer-large-vault-fixture` and refuse
 | Add group mode | `groupers.ts` + `types.ts` (GroupMode union) + `settings-helpers.ts` |
 | Add filter | `filters.ts` + `types.ts` (ExplorerQuery) + `SmartExplorerView.ts` (toolbar) |
 | Change tree view | `TreeModel.ts` / `treeFolderInfo.ts` + `SmartExplorerView.ts` |
-| Change manual ordering | `manualOrder.ts` + `DragSortManager.ts` + `SmartExplorerView.ts` |
+| Change manual ordering | `manualOrder.ts` + `DragSortManager.ts` + `SmartExplorerView.ts` + `main.ts` (shared rename tracking) |
 | Change create actions | `creationPath.ts` + `SmartExplorerView.ts` |
 | Change toolbar layout | `SmartExplorerView.ts` (renderToolbar) + `styles.css` |
 | Add settings | `settings.ts` + `settings-tab.ts` + `main.ts` (load/save) |
 | Fix rendering | `SmartExplorerView.ts` + `styles.css` |
-| Add vault event handling | `SmartExplorerView.ts` (registerVaultEvents) |
+| Add vault event handling | `SmartExplorerView.ts` (view index/UI events); `main.ts` (shared rename tracking) |

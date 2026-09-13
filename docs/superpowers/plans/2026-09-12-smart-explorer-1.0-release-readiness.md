@@ -10,6 +10,19 @@
 
 ---
 
+
+## Execution status — 2026-09-13
+
+Implementation is complete. The user confirmed the previously reported mobile, Obsidian 1.7.2, VoiceOver, and full keyboard/drag acceptance items. Other release checks remain tracked separately. See [candidate evidence](../../verification/1.0.0-readiness.md) for exact runtime observations, asset hashes, cleanup, and remaining gates.
+
+- Tasks 1–4: completed. Core changes share one tightly coupled commit (`164b501`) because plugin ownership, view history, and integration-harness changes must be tested together.
+- Task 5: desktop rename/link/Undo/no-pane/reload, targeted native creation/keyboard, and real 5,000-file performance checks completed; full gestures/keyboard and VoiceOver subsequently confirmed by the user; remaining width/error cases are tracked in the evidence.
+- Task 6: schema regression, actual 0.5.4 and 0.6.1 upgrades, and no-data loading completed. Mobile and minimum-version checks subsequently confirmed by the user; final downloaded-release installation remains pending.
+- Task 7: documentation and draft notes completed; version remains 0.6.1.
+- Tasks 8–9: not started; prerequisites are not satisfied. No publication authorization is inferred.
+- Evidence-driven adjustment: hidden fixture content was invisible to Obsidian (0 indexed files). The generator now uses `smart-explorer-large-vault-fixture`, with the marker guard retained (`05a0214`). Do not reuse the former hidden path for future performance acceptance.
+- Implementation and documentation are delivered together on `fix/1.0-order-reliability` for the user-requested PR, without release metadata changes.
+
 ## 1. Execution contract
 
 This document is executable without the preceding conversation. The default execution scope is implementation, automated verification, available local acceptance, documentation, and a reviewable delivery. Writing this plan does not itself authorize executing it, merging PRs, or publishing a release. Once instructed to execute, proceed through the authorized scope without requesting routine implementation decisions. If merge/tag publication is also explicitly authorized, continue through the final publication phase after all gates pass.
@@ -73,7 +86,7 @@ Do not refactor the large view class or introduce a general event framework as p
 
 ## Task 1: Refresh baseline and establish evidence
 
-- [ ] Read the repository rules and inspect the branch/worktree.
+- [x] Read the repository rules and inspect the branch/worktree.
 
 ```bash
 git status --short
@@ -82,10 +95,10 @@ git log -1 --format='%H %s'
 cat package.json manifest.json
 ```
 
-- [ ] Create branch `fix/1.0-order-reliability` from current main after fetching and inspecting divergence. Do not reset or overwrite existing changes. If this branch already exists, inspect and resume it rather than recreate it.
-- [ ] Run `npm ci` when dependencies are absent or the lockfile/environment changed, then `npm run verify`. Record exit codes and counts. A dependency/network failure is an environment blocker, not a regression result.
-- [ ] Create `docs/verification/1.0.0-readiness.md` with these sections: candidate commit and asset hashes; environment versions; automated checks; bug reproductions; desktop matrix; mobile matrix; compatibility; upgrade/install; performance; accessibility; outstanding blockers; final gate decision.
-- [ ] Use this row schema for all acceptance observations:
+- [x] Create branch `fix/1.0-order-reliability` from current main after fetching and inspecting divergence. Do not reset or overwrite existing changes. If this branch already exists, inspect and resume it rather than recreate it.
+- [x] Run `npm ci` when dependencies are absent or the lockfile/environment changed, then `npm run verify`. Record exit codes and counts. A dependency/network failure is an environment blocker, not a regression result.
+- [x] Create `docs/verification/1.0.0-readiness.md` with these sections: candidate commit and asset hashes; environment versions; automated checks; bug reproductions; desktop matrix; mobile matrix; compatibility; upgrade/install; performance; accessibility; outstanding blockers; final gate decision.
+- [x] Use this row schema for all acceptance observations:
 
 ```markdown
 | ID | Candidate | Environment | Action/input | Expected | Observed | Evidence | Status |
@@ -98,7 +111,7 @@ Record unavailable checks as BLOCKED with the specific missing device/version/ac
 
 **Files:** `src/explorer/SmartExplorerView.ts`, `src/explorer/__tests__/SmartExplorerView.test.ts`.
 
-- [ ] Add `TFile` to the existing test imports and add this regression in the existing mocked-Obsidian test file:
+- [x] Add `TFile` to the existing test imports and add this regression in the existing mocked-Obsidian test file:
 
 ```ts
 it("renames through FileManager so host link preferences are respected", async () => {
@@ -121,15 +134,15 @@ it("renames through FileManager so host link preferences are respected", async (
 });
 ```
 
-- [ ] Run `npm test -- --runInBand src/explorer/__tests__/SmartExplorerView.test.ts`; confirm the new test fails because FileManager was not called.
-- [ ] In `renameItemToName`, replace only the mutation call, retaining collision checks, extension preservation, success selection, and Notice error handling:
+- [x] Run `npm test -- --runInBand src/explorer/__tests__/SmartExplorerView.test.ts`; confirm the new test fails because FileManager was not called.
+- [x] In `renameItemToName`, replace only the mutation call, retaining collision checks, extension preservation, success selection, and Notice error handling:
 
 ```ts
 await this.app.fileManager.renameFile(file, nextPath);
 ```
 
-- [ ] Extend the regression table with folder rename (`old/x.md` remains under renamed folder), collision (neither API called), unchanged basename (no mutation), and rejected FileManager promise (Notice, no success selection). Use `TFolder` from the same mock for folder identity. A mock cannot establish that actual backlinks changed; reserve that assertion for Task 5.
-- [ ] Run the focused test file and `npm run build`. Commit as `fix: preserve internal links during explorer rename`.
+- [x] Extend the regression table with folder rename (`old/x.md` remains under renamed folder), collision (neither API called), unchanged basename (no mutation), and rejected FileManager promise (Notice, no success selection). Use `TFolder` from the same mock for folder identity. A mock cannot establish that actual backlinks changed; reserve that assertion for Task 5.
+- [x] Run the focused test file and `npm run build`. Commit as `fix: preserve internal links during explorer rename`.
 
 ## Task 3: Make shared rename maintenance independent of open panes
 
@@ -139,8 +152,8 @@ await this.app.fileManager.renameFile(file, nextPath);
 
 The plugin owns exactly one transformation of `settings.manualOrder` per vault rename. Each view still updates its FileIndex, selected paths, expanded folders, reconcile flag, and its own Undo snapshots. The plugin listener must not synchronously render views before their indexes consume the same event. Reuse each view's existing scheduled rebuild.
 
-- [ ] Add `registerEvent() {}` to the mock Plugin classes used by tests that call `onload`. Provide `app.vault.on` in those test apps. Inspect all `onload` tests with `rg -n 'onload|registerEvent' src/__tests__ src/explorer/__tests__`.
-- [ ] In `main.test.ts`, add a callback-capture test with no leaves and saved order `['b.md', 'old/a.md', 'c.md']`. Call `onload`, emit rename with `{path:'new'}` and old path `old`, await `flushSettings`, and expect `['b.md','new/a.md','c.md']` in memory and the last `saveData` snapshot. Cover exact-file rename and unrelated-prefix `older/a.md` as separate cases. The current code must fail this no-pane test.
+- [x] Add `registerEvent() {}` to the mock Plugin classes used by tests that call `onload`. Provide `app.vault.on` in those test apps. Inspect all `onload` tests with `rg -n 'onload|registerEvent' src/__tests__ src/explorer/__tests__`.
+- [x] In `main.test.ts`, add a callback-capture test with no leaves and saved order `['b.md', 'old/a.md', 'c.md']`. Call `onload`, emit rename with `{path:'new'}` and old path `old`, await `flushSettings`, and expect `['b.md','new/a.md','c.md']` in memory and the last `saveData` snapshot. Cover exact-file rename and unrelated-prefix `older/a.md` as separate cases. The current code must fail this no-pane test.
 
 ```ts
 it("persists folder renames without an explorer pane", async () => {
@@ -169,7 +182,7 @@ it("persists folder renames without an explorer pane", async () => {
   }));
 });
 ```
-- [ ] Import `renameManualOrderPaths` in `src/main.ts`. After `await this.loadSettings()` and before view registration, add:
+- [x] Import `renameManualOrderPaths` in `src/main.ts`. After `await this.loadSettings()` and before view registration, add:
 
 ```ts
 this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
@@ -183,7 +196,7 @@ this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
 
 This intentionally uses the existing serialized immutable-snapshot save queue. An empty order stays empty. Do not introduce a separate timer, write directly through `saveData`, or infer file identity from content.
 
-- [ ] Replace the view's `updateManualOrderAfterRename` method with a view-local method and replace its two call sites in the rename listener:
+- [x] Replace the view's `updateManualOrderAfterRename` method with a view-local method and replace its two call sites in the rename listener:
 
 ```ts
 private updateManualOrderUndoAfterRename(oldPath: string, newPath: string) {
@@ -195,7 +208,7 @@ private updateManualOrderUndoAfterRename(oldPath: string, newPath: string) {
 
 Delete the old shared mutation/save method. Move its shared-order tests to `main.test.ts`; retain view tests for history migration. Production views initialize their stack; bare test views must explicitly set `manualOrderUndoStack = []`.
 
-- [ ] Correct the integration harness: its current `vaultHandlers[name] = cb` overwrites multiple listeners. Store an array per event, append in `on`, and dispatch all listeners from an `emitVault` helper. Use the same event argument shape as the real API. Register plugin listeners by calling and awaiting `plugin.onload()` before registering view listeners. Update `makeHarness` to async and await it at every test call site. Remove test-only preloading that `onload` now handles.
+- [x] Correct the integration harness: its current `vaultHandlers[name] = cb` overwrites multiple listeners. Store an array per event, append in `on`, and dispatch all listeners from an `emitVault` helper. Use the same event argument shape as the real API. Register plugin listeners by calling and awaiting `plugin.onload()` before registering view listeners. Update `makeHarness` to async and await it at every test call site. Remove test-only preloading that `onload` now handles.
 
 ```ts
 const vaultHandlers = new Map<string, Array<(file: any, oldPath?: string) => void>>();
@@ -212,8 +225,8 @@ const emitVault = (name: string, file: unknown, oldPath?: string) => {
 
 Use `on: onVault` in the fake vault and replace direct `vaultHandlers.rename!(...)` calls with `emitVault('rename', ...)`. Where lifecycle cleanup is tested, implement fake `offref` and mock `registerEvent`/unload cleanup rather than claiming the no-op mock proves cleanup.
 
-- [ ] Add tests for zero views; one and two open views; folder subtree rename; an unrelated rename causing no save; failed save producing Notice followed by a successful later rename/save. Verify both views consume the event and their histories migrate without a second transformation of shared order. Event tests must update the fake vault map to match the event before emission.
-- [ ] Run `npm test -- --runInBand src/__tests__/main.test.ts src/explorer/__tests__/SmartExplorerView.test.ts src/explorer/__tests__/SmartExplorerView.integration.test.ts`, then `npm run build`. Commit as `fix: preserve manual order when explorer panes are closed`.
+- [x] Add tests for zero views; one and two open views; folder subtree rename; an unrelated rename causing no save; failed save producing Notice followed by a successful later rename/save. Verify both views consume the event and their histories migrate without a second transformation of shared order. Event tests must update the fake vault map to match the event before emission.
+- [x] Run `npm test -- --runInBand src/__tests__/main.test.ts src/explorer/__tests__/SmartExplorerView.test.ts src/explorer/__tests__/SmartExplorerView.integration.test.ts`, then `npm run build`. Commit as `fix: preserve manual order when explorer panes are closed`.
 
 ## Task 4: Reconcile Undo against current vault contents
 
@@ -221,7 +234,7 @@ Use `on: onVault` in the fake vault and replace direct `vaultHandlers.rename!(..
 
 Contract: Undo reverts ordering, never file-system operations. Renamed paths retain their historical position. Deleted paths cannot return. New and hidden files remain in the complete order and remain draggable after filters are cleared. New paths append using the existing seed sort. An unchanged vault still gets the normal one-step order reversal.
 
-- [ ] Add table-driven regressions for these exact histories:
+- [x] Add table-driven regressions for these exact histories:
 
 | Saved history / current order | Structural change | Expected after Undo |
 |---|---|---|
@@ -262,8 +275,8 @@ it("keeps a newly created file draggable after Undo", () => {
 });
 ```
 
-- [ ] Confirm create → Undo fails on current code; rename history migration from Task 3 may already make the rename case pass. After each Undo, call the real `reorderManualOrder` with the resulting array and full visible section, and prove a newly created/renamed file can change position. Add hidden-extension and active-filter cases with the full index still supplied.
-- [ ] Replace `undoManualReorder` with:
+- [x] Confirm create → Undo fails on current code; rename history migration from Task 3 may already make the rename case pass. After each Undo, call the real `reorderManualOrder` with the resulting array and full visible section, and prove a newly created/renamed file can change position. Add hidden-extension and active-filter cases with the full index still supplied.
+- [x] Replace `undoManualReorder` with:
 
 ```ts
 private undoManualReorder() {
@@ -281,22 +294,22 @@ private undoManualReorder() {
 
 `initializeManualOrder` already clears display filters for seed sorting, reconciles against the full index, and rebuilds the order index. Keep its behavior; the final scheduled save is necessary even when reconciliation returns the same reference.
 
-- [ ] Add an integration regression: actual reorder → actual vault rename event → advance the 300ms rebuild → Undo → drag renamed row → advance the 500ms save → await `flushSettings`. Assert the saved array is a unique permutation of current file paths and contains no old name. Repeat create/delete cases, and an Undo before the scheduled rebuild (the index is updated synchronously by the event).
-- [ ] Run the three focused files from Task 3 plus `src/explorer/__tests__/manualOrder.test.ts`. Run `npm run verify`. Record counts and candidate commit. Commit as `fix: reconcile manual order history with vault changes`.
-- [ ] Review PR A for ownership duplication, stale-index pruning, unhandled save failures, and unintended schema changes. Run the desktop rename/order smoke cases from Task 5 before declaring A ready. If publishing PRs is authorized, open PR A with regression details and actual validation results.
+- [x] Add an integration regression: actual reorder → actual vault rename event → advance the 300ms rebuild → Undo → drag renamed row → advance the 500ms save → await `flushSettings`. Assert the saved array is a unique permutation of current file paths and contains no old name. Repeat create/delete cases, and an Undo before the scheduled rebuild (the index is updated synchronously by the event).
+- [x] Run the three focused files from Task 3 plus `src/explorer/__tests__/manualOrder.test.ts`. Run `npm run verify`. Record counts and candidate commit. Commit as `fix: reconcile manual order history with vault changes`.
+- [x] Review PR A for ownership duplication, stale-index pruning, unhandled save failures, and unintended schema changes. Run the desktop rename/order smoke cases from Task 5 before declaring A ready. If publishing PRs is authorized, open PR A with regression details and actual validation results.
 
 ## Task 5: Desktop, accessibility, and performance acceptance
 
 **Output:** `docs/verification/1.0.0-readiness.md`. No production change unless a concrete regression is found; each found regression gets a failing test where feasible and a focused fix.
 
-- [ ] Record OS, Obsidian app/installer version, theme, candidate commit, Node version, and SHA-256 of `main.js`, `manifest.json`, and `styles.css` (`shasum -a 256 main.js manifest.json styles.css`). Confirm `/Users/Roger/my-vault/.obsidian/plugins/smart-explorer` resolves to the candidate checkout before building. Do not silently replace an unrelated plugin installation.
-- [ ] Keep acceptance files within a uniquely named test subtree. Record its original nonexistence and created paths. Never bulk-delete existing vault content; remove only the files created by this run.
-- [ ] Create `se-1.0-acceptance/old/Target.md` and `se-1.0-acceptance/Links.md` with `[[old/Target]]`, `[Target](old/Target.md)`, and `![[old/Target]]`. With automatic link updates enabled, rename Target inline and then rename its parent folder. Inspect all three references and open their destinations. Repeat with automatic link updates disabled and verify native host preference behavior. Restore the original preference.
+- [x] Record OS, Obsidian app/installer version, theme, candidate commit, Node version, and SHA-256 of `main.js`, `manifest.json`, and `styles.css` (`shasum -a 256 main.js manifest.json styles.css`). Confirm `/Users/Roger/my-vault/.obsidian/plugins/smart-explorer` resolves to the candidate checkout before building. Do not silently replace an unrelated plugin installation.
+- [x] Keep acceptance files within a uniquely named test subtree. Record its original nonexistence and created paths. Never bulk-delete existing vault content; remove only the files created by this run.
+- [x] Create `se-1.0-acceptance/old/Target.md` and `se-1.0-acceptance/Links.md` with `[[old/Target]]`, `[Target](old/Target.md)`, and `![[old/Target]]`. With automatic link updates enabled, rename Target inline and then rename its parent folder. Inspect all three references and open their destinations. Repeat with automatic link updates disabled and verify native host preference behavior. Restore the original preference.
 - [ ] Test create note/folder at root and selected folder; blank/invalid names; collision; Unicode names; fixed extension; cancel; missing target after external deletion; rejected rename/save surfaces a useful error. Verify delete uses the configured trash destination and cancellation leaves contents untouched.
 - [ ] Reproduce every Task 4 history through the UI. Close every Smart Explorer leaf while leaving the plugin enabled, rename a manually ordered file in the native explorer, reopen and verify position. Repeat folder rename, reload, and two open panes. Verify repeated open/close does not duplicate reactions.
 - [ ] At 300px and a wider pane, in light and dark themes, verify duplicate basenames show distinguishable paths, selected/focused rows are visible, filter controls remain usable, and switching active files highlights without unexpected scroll/reveal.
 - [ ] Keyboard-only: one Tab stop enters the composite; arrows/Home/End navigate; left/right collapse/expand folders; Enter/Space activate; search and Escape work; Alt+Arrow reorder and Undo work. With VoiceOver, record announced name, role, expanded state, position, and reorder result. Keyboard tests and VoiceOver are separate rows.
-- [ ] Run the repository's protected fixture commands:
+- [x] Run the repository's protected fixture commands:
 
 ```bash
 node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --files 5000
@@ -315,7 +328,7 @@ Measure three fresh `FileIndex.build()` operations in a real Obsidian session, n
 
 Use an additional dedicated flat-directory fixture only if the standard fixture does not exercise many siblings; create/remove it with the same ownership safeguards. Do not treat the fixture's own Node safety test as a runtime performance test.
 
-- [ ] Remove the standard fixture using its marker guard and verify unrelated files remain:
+- [x] Remove the standard fixture using its marker guard and verify unrelated files remain:
 
 ```bash
 node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --remove
@@ -327,7 +340,7 @@ node scripts/prepare-large-vault-fixture.mjs --vault /Users/Roger/my-vault --rem
 
 **Files:** `src/settings/__tests__/settings-normalization.test.ts`, `docs/verification/1.0.0-readiness.md`.
 
-- [ ] Add explicit normalization regression fixtures for the existing schema:
+- [x] Add explicit normalization regression fixtures for the existing schema:
 
 ```ts
 const saved = {
@@ -342,8 +355,8 @@ expect(normalizeSettings({ ...saved, manualOrder: ["b.md", "b.md", 7, "a.md"] })
 
 Use existing imports and tests to avoid duplicate coverage. Add null/non-object load data only if absent. Run `npm test -- --runInBand src/settings/__tests__/settings-normalization.test.ts src/__tests__/main.test.ts`.
 
-- [ ] Inspect actual 0.5.4 and 0.6.1 tagged settings definitions with `git show 0.5.4:src/settings/settings.ts` and `git show 0.6.1:src/settings/settings.ts`. If tags are unavailable, fetch them without changing the checkout. Adapt legacy fixtures to observed historical fields; do not label invented JSON as captured old-version data.
-- [ ] In a separate test vault, install each old release, set a nonalphabetical manual order, hidden extensions, default sort/group, and view mode where supported. Record `data.json`, then replace only the three plugin assets with the candidate and reload. Verify preferences/order persist, missing settings get defaults, and subsequent rename/reorder/reload still work. Do not overwrite `data.json` during asset replacement.
+- [x] Inspect actual 0.5.4 and 0.6.1 tagged settings definitions with `git show 0.5.4:src/settings/settings.ts` and `git show 0.6.1:src/settings/settings.ts`. If tags are unavailable, fetch them without changing the checkout. Adapt legacy fixtures to observed historical fields; do not label invented JSON as captured old-version data.
+- [x] In a separate test vault, install each old release, set a nonalphabetical manual order, hidden extensions, default sort/group, and view mode where supported. Record `data.json`, then replace only the three plugin assets with the candidate and reload. Verify preferences/order persist, missing settings get defaults, and subsequent rename/reorder/reload still work. Do not overwrite `data.json` during asset replacement.
 - [ ] Test a fresh install with no `data.json`; ensure defaults load, no console errors occur, and basic operations work. This is a separate check from upgrade.
 - [ ] On Obsidian 1.7.2 and the current stable release, run load/browse/search/create/rename/trash/manual-order/reload smoke checks. Record actual versions; API package version alone proves neither. If 1.7.2 is unavailable, mark BLOCKED. If an API or runtime feature fails, use a narrow compatible approach where practical; otherwise propose and document a tested minimum-version increase before metadata publication.
 - [ ] On an actual iOS device and Android device, test tree/list, 44px-or-larger touch controls, long-press menu versus scrolling, long-press drag versus menu, scroll during reorder, Undo, soft-keyboard editing/cancel, collision feedback, portrait/landscape, safe areas, persistence and trash behavior. Record OS/app/device and exact observations. Emulation is useful for development but cannot mark these rows PASS.
@@ -354,19 +367,19 @@ Use existing imports and tests to avoid duplicate coverage. Add null/non-object 
 
 **Files:** `README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/release-checklist.md`, both active historical plan documents, `docs/release-notes/1.0.0.md`, evidence report.
 
-- [ ] Replace the README privacy paragraph and equivalent write-scope statements with this accurate scope:
+- [x] Replace the README privacy paragraph and equivalent write-scope statements with this accurate scope:
 
 ```text
 No network requests. Explicit user actions can create notes or folders, rename files or folders, and move items to the configured trash. Renaming follows Obsidian's internal-link update preference. Plugin settings and manual order are saved locally, including path maintenance after vault renames while the plugin is enabled.
 ```
 
-- [ ] Document Manual as list-only/ungrouped; Undo reverses ordering, not file operations; new files remain sortable; no-pane rename tracking requires the plugin to remain enabled. Describe existing file/folder rename and trash actions without implying bulk file management.
-- [ ] Update `AGENTS.md` and `CLAUDE.md` to the current version at this phase (do not claim 1.0 before Task 8), actual script list including release/fixture tests, and plugin-lifetime rename ownership. Preserve unrelated conventions.
-- [ ] Update the release checklist to require `npm run verify`, candidate-specific evidence, old-version upgrade/fresh install, rename links, Undo after structural events, no-pane rename, mobile/minimum-version checks, performance results, and artifact-install verification. Make large-vault acceptance mandatory for 1.0; do not impose this full matrix on every later documentation-only patch.
-- [ ] Add a status note at the top of the July reliability and August UX plans pointing to this plan and the evidence report. State that historical checkboxes are not the current delivery ledger. Mark only individually verified historical steps complete; do not blanket-check unexecuted manual acceptance.
-- [ ] Write user-facing 1.0 release notes: stable scope; link-safe rename; resilient manual ordering; tested compatibility; known limitations. Avoid claims such as “all platforms tested” unless the evidence supports them. Refer to existing features as the stable feature set, not all newly introduced in 1.0.
-- [ ] Search for drift with `rg -n '0\.5\.4|File writes|Vault writes|optional|npm test|1\.7\.2' README.md AGENTS.md CLAUDE.md docs/release-checklist.md docs/release-notes/1.0.0.md`. Preserve genuine historical references and update only stale current claims.
-- [ ] Run `git diff --check`, inspect relative links, and reconcile every PASS with observed evidence. Commit as `docs: define stable explorer behavior and release acceptance`. PR B must clearly state any BLOCKED device checks; it must not imply release approval.
+- [x] Document Manual as list-only/ungrouped; Undo reverses ordering, not file operations; new files remain sortable; no-pane rename tracking requires the plugin to remain enabled. Describe existing file/folder rename and trash actions without implying bulk file management.
+- [x] Update `AGENTS.md` and `CLAUDE.md` to the current version at this phase (do not claim 1.0 before Task 8), actual script list including release/fixture tests, and plugin-lifetime rename ownership. Preserve unrelated conventions.
+- [x] Update the release checklist to require `npm run verify`, candidate-specific evidence, old-version upgrade/fresh install, rename links, Undo after structural events, no-pane rename, mobile/minimum-version checks, performance results, and artifact-install verification. Make large-vault acceptance mandatory for 1.0; do not impose this full matrix on every later documentation-only patch.
+- [x] Add a status note at the top of the July reliability and August UX plans pointing to this plan and the evidence report. State that historical checkboxes are not the current delivery ledger. Mark only individually verified historical steps complete; do not blanket-check unexecuted manual acceptance.
+- [x] Write user-facing 1.0 release notes: stable scope; link-safe rename; resilient manual ordering; tested compatibility; known limitations. Avoid claims such as “all platforms tested” unless the evidence supports them. Refer to existing features as the stable feature set, not all newly introduced in 1.0.
+- [x] Search for drift with `rg -n '0\.5\.4|File writes|Vault writes|optional|npm test|1\.7\.2' README.md AGENTS.md CLAUDE.md docs/release-checklist.md docs/release-notes/1.0.0.md`. Preserve genuine historical references and update only stale current claims.
+- [x] Run `git diff --check`, inspect relative links, and reconcile every PASS with observed evidence. Commit as `docs: define stable explorer behavior and release acceptance`. PR B must clearly state any BLOCKED device checks; it must not imply release approval.
 
 ## Task 8: Prepare the 1.0.0 release candidate
 
@@ -401,12 +414,12 @@ Prerequisite: explicit publication authorization, merged release PR, successful 
 
 ## Final completion checklist
 
-- [ ] File/folder rename uses FileManager and real link-update preferences were verified.
-- [ ] Undo survives rename/create/delete and leaves every current file sortable.
-- [ ] Shared manual-order paths stay correct with no explorer panes open while the plugin remains enabled.
-- [ ] Automated gate passes on the delivered code; runtime and upgrade evidence names that code.
+- [x] File/folder rename uses FileManager and real link-update preferences were verified.
+- [x] Undo survives rename/create/delete and leaves every current file sortable.
+- [x] Shared manual-order paths stay correct with no explorer panes open while the plugin remains enabled.
+- [x] Automated gate passes on the delivered code; runtime and upgrade evidence names that code.
 - [ ] Required desktop, mobile, minimum-version, accessibility, and performance rows PASS.
-- [ ] Documentation matches behavior and clearly states limitations.
+- [x] Documentation matches behavior and clearly states limitations.
 - [ ] Release metadata is consistent; publication only occurred within authorization.
 - [ ] If published, downloaded assets were installed and verified.
 

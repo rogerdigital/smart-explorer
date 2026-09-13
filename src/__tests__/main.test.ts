@@ -7,6 +7,7 @@ jest.mock(
 				return null;
 			}
 			async saveData(_data: unknown) {}
+			registerEvent() {}
 			registerView() {}
 			addRibbonIcon() {}
 			addCommand() {}
@@ -19,7 +20,7 @@ jest.mock(
 			open() {}
 			close() {}
 		},
-		Notice: class {},
+		Notice: jest.fn(),
 		PluginSettingTab: class {},
 		Setting: class {},
 		Platform: { isMobile: false },
@@ -103,7 +104,7 @@ describe("SmartExplorerPlugin", () => {
 	it("registers command palette actions for core explorer workflows", async () => {
 		const commands: { id: string; name: string }[] = [];
 		const plugin = new SmartExplorerPlugin({} as any, {} as any);
-		(plugin as any).app = { workspace: {} };
+		(plugin as any).app = { workspace: {}, vault: { on: jest.fn() } };
 		(plugin as any).registerView = jest.fn();
 		(plugin as any).addRibbonIcon = jest.fn();
 		(plugin as any).addCommand = jest.fn((command) => {
@@ -203,4 +204,31 @@ describe("SmartExplorerPlugin", () => {
 		expect(plugin.saveData).toHaveBeenCalledTimes(1);
 	});
 
+});
+
+
+describe("plugin lifetime rename maintenance", () => {
+	it("preserves subtree positions with no panes and recovers after a failed save", async () => {
+		const handlers: Record<string, (file: { path: string }, oldPath: string) => void> = {};
+		const plugin = new SmartExplorerPlugin({} as any, {} as any);
+		(plugin as any).app = { vault: { on: (name: string, cb: typeof handlers[string]) => { handlers[name] = cb; } }, workspace: { getLeavesOfType: () => [] } };
+		await plugin.onload();
+		plugin.settings.manualOrder = ["b.md", "old/a.md", "older/a.md", "c.md"];
+		plugin.saveData = jest.fn().mockRejectedValueOnce(new Error("disk full")).mockResolvedValue(undefined);
+		expect(handlers.rename).toBeDefined();
+		handlers.rename!({ path: "new" }, "old");
+		await plugin.flushSettings();
+		expect(plugin.settings.manualOrder).toEqual(["b.md", "new/a.md", "older/a.md", "c.md"]);
+		expect(jest.requireMock("obsidian").Notice).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+		handlers.rename!({ path: "renamed.md" }, "b.md");
+		await plugin.flushSettings();
+		expect(plugin.saveData).toHaveBeenLastCalledWith(expect.objectContaining({ manualOrder: ["renamed.md", "new/a.md", "older/a.md", "c.md"] }));
+		handlers.rename!({ path: "irrelevant.md" }, "missing.md");
+		await plugin.flushSettings();
+		expect(plugin.saveData).toHaveBeenCalledTimes(2);
+		plugin.settings.manualOrder = [];
+		handlers.rename!({ path: "other.md" }, "renamed.md");
+		expect(plugin.settings.manualOrder).toEqual([]);
+		expect(plugin.saveData).toHaveBeenCalledTimes(2);
+	});
 });

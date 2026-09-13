@@ -16,6 +16,9 @@ jest.mock(
 					return null;
 				}
 				async saveData(_data: unknown) {}
+				eventRefs: Array<{ off: () => void }> = [];
+				registerEvent(ref: { off: () => void }) { this.eventRefs.push(ref); }
+				unloadEvents() { this.eventRefs.splice(0).forEach((ref) => ref.off()); }
 				registerView() {}
 				addRibbonIcon() {}
 				addCommand() {}
@@ -31,7 +34,9 @@ jest.mock(
 					this.containerEl.append(document.createElement("div"), document.createElement("div"));
 				}
 
-				registerEvent() {}
+				eventRefs: Array<{ off: () => void }> = [];
+				registerEvent(ref: { off: () => void }) { this.eventRefs.push(ref); }
+				unloadEvents() { this.eventRefs.splice(0).forEach((ref) => ref.off()); }
 			},
 			Menu: class {},
 			PluginSettingTab: class {},
@@ -58,7 +63,6 @@ import { TFile, TFolder } from "obsidian";
 
 (globalThis as typeof globalThis & { activeWindow: Window }).activeWindow = window;
 import SmartExplorerPlugin from "../../main";
-import { normalizeSettings } from "../../settings/settings-normalization";
 import { SmartExplorerView } from "../SmartExplorerView";
 
 function makeTFile(path: string): TFile & { path: string } {
@@ -80,10 +84,19 @@ function makeTFolder(path: string): TFolder & { path: string } {
 	return folder;
 }
 
-function makeHarness() {
+async function makeHarness() {
 	const files = new Map<string, ReturnType<typeof makeTFile>>();
 	const folders = new Set<string>();
-	const vaultHandlers: Record<string, (file: unknown, oldPath?: string) => void> = {};
+	const vaultHandlers = new Map<string, Array<(file: any, oldPath?: string) => void>>();
+	const onVault = (name: string, cb: (file: any, oldPath?: string) => void) => {
+		const handlers = vaultHandlers.get(name) ?? [];
+		handlers.push(cb);
+		vaultHandlers.set(name, handlers);
+		return { off: () => { handlers.splice(handlers.indexOf(cb), 1); } };
+	};
+	const emitVault = (name: string, file: unknown, oldPath?: string) => {
+		for (const cb of [...(vaultHandlers.get(name) ?? [])]) cb(file, oldPath);
+	};
 	const workspaceHandlers: Record<string, (file: unknown) => void> = {};
 
 	const workspace: any = {
@@ -92,6 +105,7 @@ function makeHarness() {
 		getLeavesOfType: () => [],
 		on: (name: string, cb: (file: unknown) => void) => {
 			workspaceHandlers[name] = cb;
+			return { off: () => { if (workspaceHandlers[name] === cb) delete workspaceHandlers[name]; } };
 		},
 	};
 	const app = {
@@ -102,31 +116,41 @@ function makeHarness() {
 				...Array.from(folders).map((path) => makeTFolder(path)),
 			],
 			getAbstractFileByPath: (path: string) => files.get(path) ?? null,
-			on: (name: string, cb: (file: unknown, oldPath?: string) => void) => {
-				vaultHandlers[name] = cb;
-			},
+			on: onVault,
 		},
 		metadataCache: null,
 		workspace,
 	};
 
 	const plugin = new SmartExplorerPlugin(app as never, { id: "test" } as never);
-	plugin.settings = normalizeSettings(null);
+	await plugin.onload();
 	plugin.saveData = jest.fn(async () => {});
 
-	const view = new SmartExplorerView({ app } as never, plugin as never) as any;
-	workspace.getLeavesOfType = () => [{ view }];
-	const container = view.containerEl.children[1] as HTMLElement;
-	document.body.appendChild(container);
-	view.renderShell(container);
-	view.fileIndex.build();
-	view.renderList();
-	view.registerVaultEvents();
+	const views: any[] = [];
+	workspace.getLeavesOfType = () => views.map((view) => ({ view }));
+	const openView = () => {
+		const view = new SmartExplorerView({ app } as never, plugin as never) as any;
+		views.push(view);
+		const container = view.containerEl.children[1] as HTMLElement;
+		document.body.appendChild(container);
+		view.renderShell(container);
+		view.fileIndex.build();
+		view.renderList();
+		view.registerVaultEvents();
+		return view;
+	};
+	const closeView = async (view: any) => {
+		await view.onClose();
+		view.unloadEvents(); // Component event cleanup follows ItemView.onClose in the host.
+		views.splice(views.indexOf(view), 1);
+	};
+	const view = openView();
+	const container = document.body.lastElementChild as HTMLElement;
 
 	const notices = (jest.requireMock("obsidian") as { __notices: string[] }).__notices;
 
 	return {
-		view, plugin, container, files, folders, notices, workspace, workspaceHandlers, vaultHandlers,
+		view, plugin, container, files, folders, notices, workspace, workspaceHandlers, vaultHandlers, emitVault, openView, closeView,
 		add(path: string) {
 			const file = makeTFile(path);
 			files.set(path, file);
@@ -150,8 +174,8 @@ describe("SmartExplorerView lifecycle integration", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("create file grows the index and refreshes the debounced DOM count", () => {
-		const harness = makeHarness();
+	it("create file grows the index and refreshes the debounced DOM count", async () => {
+		const harness = await makeHarness();
 		harness.view.viewMode = "list";
 		harness.add("existing.md");
 		harness.view.fileIndex.build();
@@ -159,7 +183,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 		const countBefore = harness.container.querySelector(".smart-explorer-file-count")!.textContent;
 
 		const file = harness.add("notes/created.md");
-		harness.vaultHandlers.create!(file);
+		harness.emitVault("create", file);
 		jest.advanceTimersByTime(300);
 
 		expect(countBefore).toBe("1 file");
@@ -167,11 +191,11 @@ describe("SmartExplorerView lifecycle integration", () => {
 		expect(harness.container.querySelector('[data-path="notes/created.md"]')).not.toBeNull();
 	});
 
-	it("delete folder removes every child from the index and the DOM", () => {
-		const harness = makeHarness();
+	it("delete folder removes every child from the index and the DOM", async () => {
+		const harness = await makeHarness();
 		for (const path of ["keep.md", "gone/a.md", "gone/nested/b.md"]) {
 			const file = harness.add(path);
-			harness.vaultHandlers.create!(file);
+			harness.emitVault("create", file);
 			jest.advanceTimersByTime(300);
 		}
 		expect(harness.view.fileIndex.getAll()).toHaveLength(3);
@@ -179,7 +203,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 
 		harness.remove("gone/a.md");
 		harness.remove("gone/nested/b.md");
-		harness.vaultHandlers.delete!(makeTFolder("gone"));
+		harness.emitVault("delete", makeTFolder("gone"));
 		jest.advanceTimersByTime(300);
 
 		expect(harness.view.fileIndex.getAll().map((record: any) => record.path)).toEqual(["keep.md"]);
@@ -188,15 +212,20 @@ describe("SmartExplorerView lifecycle integration", () => {
 		expect(harness.view.selectedPath).toBeNull();
 	});
 
-	it("rename folder rewrites child paths and manual order", () => {
-		const harness = makeHarness();
+	it("rename folder rewrites child paths and manual order", async () => {
+		const harness = await makeHarness();
 		harness.plugin.settings.manualOrder = ["keep.md", "old/a.md", "old/nested/b.md"];
 		for (const path of ["keep.md", "old/a.md", "old/nested/b.md"]) {
 			harness.add(path);
 		}
 		harness.view.fileIndex.build();
 		harness.view.selectedPath = "old/nested/b.md";
-		harness.vaultHandlers.rename!(makeTFolder("new"), "old");
+		harness.remove("old/a.md");
+		harness.remove("old/nested/b.md");
+		harness.folders.delete("old");
+		harness.add("new/a.md");
+		harness.add("new/nested/b.md");
+		harness.emitVault("rename", makeTFolder("new"), "old");
 		jest.advanceTimersByTime(300);
 
 		expect(harness.plugin.settings.manualOrder).toEqual(["keep.md", "new/a.md", "new/nested/b.md"]);
@@ -204,19 +233,19 @@ describe("SmartExplorerView lifecycle integration", () => {
 		expect(harness.view.selectedPath).toBe("new/nested/b.md");
 	});
 
-	it("coalesces an event burst into one render", () => {
-		const harness = makeHarness();
+	it("coalesces an event burst into one render", async () => {
+		const harness = await makeHarness();
 		const renderSpy = jest.spyOn(harness.view, "renderList");
 
 		for (let index = 0; index < 5; index++) {
-			harness.vaultHandlers.create!(harness.add(`burst-${index}.md`));
+			harness.emitVault("create", harness.add(`burst-${index}.md`));
 		}
 		jest.advanceTimersByTime(300);
 		expect(renderSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("refreshes an open view after a hidden-extension settings change", () => {
-		const harness = makeHarness();
+	it("refreshes an open view after a hidden-extension settings change", async () => {
+		const harness = await makeHarness();
 		harness.add("a.md");
 		harness.add("b.pdf");
 		harness.view.fileIndex.build();
@@ -231,7 +260,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 	});
 
 	it("shows a Notice containing the error when opening a file fails", async () => {
-		const harness = makeHarness();
+		const harness = await makeHarness();
 		const file = harness.add("broken.md");
 		harness.view.app = {
 			...harness.view.app,
@@ -256,7 +285,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 	});
 
 	it("reports Electron shell failures instead of rejecting or throwing", async () => {
-		const harness = makeHarness();
+		const harness = await makeHarness();
 		(harness.view.app.vault as any).adapter = { getBasePath: () => "/vault" };
 		const originalRequire = (window as Window & { require?: unknown }).require;
 		(window as Window & { require?: unknown }).require = () => ({
@@ -283,7 +312,7 @@ describe("SmartExplorerView lifecycle integration", () => {
 	});
 
 	it("resolves a pending manual-order save before close completes", async () => {
-		const harness = makeHarness();
+		const harness = await makeHarness();
 		harness.view.plugin.settings.manualOrder = ["a.md"];
 		harness.view.scheduleSaveOrder();
 		expect(harness.view.saveOrderTimeout).not.toBeNull();
@@ -301,5 +330,114 @@ describe("SmartExplorerView lifecycle integration", () => {
 		finishSave();
 		await closing;
 		expect(closed).toBe(true);
+	});
+});
+
+
+describe("manual order structural event integration", () => {
+	beforeEach(() => { jest.useFakeTimers(); });
+	afterEach(() => { jest.useRealTimers(); document.body.innerHTML = ""; });
+
+	it.each(["rename", "create", "delete", "folder"])("Undo and drag survive %s before and after rebuild", async (event) => {
+		for (const waitForRebuild of [false, true]) {
+			const h = await makeHarness();
+			const initial = event === "folder" ? ["old/a.md", "old/b.md", "z.md"] : ["a.md", "b.md", "c.md"];
+			initial.forEach((path) => h.add(path));
+			h.view.fileIndex.build();
+			h.view.query.sort = "manual";
+			h.plugin.settings.manualOrder = [...initial];
+			h.view.renderList();
+			h.view.handleManualReorder(initial[0], 2, h.view.currentSections);
+			let expected = [...initial];
+			if (event === "rename") {
+				h.remove("a.md");
+				h.emitVault("rename", h.add("renamed.md"), "a.md");
+				expected[0] = "renamed.md";
+			} else if (event === "create") {
+				h.emitVault("create", h.add("new.md"));
+				expected.push("new.md");
+			} else if (event === "delete") {
+				const file = h.files.get("a.md");
+				h.remove("a.md");
+				h.emitVault("delete", file);
+				expected = ["b.md", "c.md"];
+			} else {
+				for (const path of initial.slice(0, 2)) { h.remove(path); h.add(path.replace("old/", "new/")); }
+				h.folders.delete("old");
+				h.emitVault("rename", makeTFolder("new"), "old");
+				expected = ["new/a.md", "new/b.md", "z.md"];
+			}
+			if (waitForRebuild) jest.advanceTimersByTime(300);
+			h.view.undoManualReorder();
+			expect(h.plugin.settings.manualOrder).toEqual(expected);
+			const dragPath = event === "create" ? "new.md" : expected[0];
+			h.view.handleManualReorder(dragPath, event === "create" ? 0 : expected.length, h.view.currentSections);
+			expect(h.plugin.settings.manualOrder).not.toEqual(expected);
+			jest.advanceTimersByTime(500);
+			await h.plugin.flushSettings();
+			const saved = (h.plugin.saveData as jest.Mock).mock.calls.slice(-1)[0][0].manualOrder;
+			expect([...saved].sort()).toEqual([...h.files.keys()].sort());
+			expect(new Set(saved).size).toBe(saved.length);
+			await h.closeView(h.view);
+		}
+	});
+
+	it("pending save timers in two panes retain paths migrated by the plugin", async () => {
+		const h = await makeHarness();
+		h.add("a.md"); h.add("b.md");
+		h.plugin.settings.manualOrder = ["a.md", "b.md"];
+		h.view.fileIndex.build();
+		const second = h.openView();
+		for (const view of [h.view, second]) {
+			view.query.sort = "manual";
+			view.renderList();
+			view.scheduleSaveOrder();
+		}
+		jest.advanceTimersByTime(450);
+		h.remove("a.md");
+		h.emitVault("rename", h.add("renamed.md"), "a.md");
+		jest.advanceTimersByTime(50); // Saves run before the 300ms redraw.
+		await h.plugin.flushSettings();
+		expect(h.plugin.settings.manualOrder).toEqual(["renamed.md", "b.md"]);
+		for (const [snapshot] of (h.plugin.saveData as jest.Mock).mock.calls) {
+			expect(snapshot.manualOrder).toEqual(["renamed.md", "b.md"]);
+		}
+		await h.closeView(h.view);
+		await h.closeView(second);
+	});
+
+	it("migrates both panes, saves once and continues tracking after every pane closes", async () => {
+		const h = await makeHarness();
+		h.add("old/a.md"); h.add("b.md");
+		h.plugin.settings.manualOrder = ["b.md", "old/a.md"];
+		h.view.fileIndex.build();
+		const second = h.openView();
+		for (const view of [h.view, second]) {
+			view.query.sort = "manual";
+			view.renderList();
+			view.manualOrderUndoStack = [["old/a.md", "b.md"]];
+		}
+		(h.plugin.saveData as jest.Mock).mockClear();
+		h.remove("old/a.md"); h.add("new/a.md");
+		h.emitVault("rename", makeTFolder("new"), "old");
+		jest.advanceTimersByTime(500);
+		await h.plugin.flushSettings();
+		expect(h.plugin.saveData).toHaveBeenCalledTimes(1);
+		for (const view of [h.view, second]) {
+			expect(view.manualOrderUndoStack).toEqual([["new/a.md", "b.md"]]);
+			expect(view.fileIndex.get("new/a.md")).toBeDefined();
+			await h.closeView(view);
+		}
+		expect(h.vaultHandlers.get("rename")).toHaveLength(1);
+		h.remove("new/a.md");
+		h.emitVault("rename", h.add("renamed.md"), "new/a.md");
+		await h.plugin.flushSettings();
+		const reopened = h.openView();
+		expect(h.plugin.settings.manualOrder).toEqual(["b.md", "renamed.md"]);
+		expect(h.vaultHandlers.get("rename")).toHaveLength(2);
+		await h.closeView(reopened);
+		expect(h.vaultHandlers.get("rename")).toHaveLength(1);
+		(h.plugin as any).unloadEvents();
+		expect(h.vaultHandlers.get("rename")).toHaveLength(0);
 	});
 });

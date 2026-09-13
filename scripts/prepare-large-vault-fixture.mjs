@@ -2,7 +2,8 @@
 /**
  * Guarded synthetic-fixture generator for large-vault testing.
  *
- * May only create or delete `<vault>/.smart-explorer-large-vault-fixture`.
+ * May only create or delete `<vault>/smart-explorer-large-vault-fixture`.
+ * The content directory must be visible so Obsidian includes it in its index.
  * A marker file is written before any file generation; removal refuses to
  * run unless the directory name and marker both match, so an unmarked or
  * mistyped path can never be deleted.
@@ -12,7 +13,7 @@ import { parseArgs } from "node:util";
 import { mkdir, rm, writeFile, stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const FIXTURE_DIR_NAME = ".smart-explorer-large-vault-fixture";
+const FIXTURE_DIR_NAME = "smart-explorer-large-vault-fixture";
 const MARKER_FILE_NAME = ".smart-explorer-fixture-marker";
 const MIN_FILES = 100;
 const MAX_FILES = 50000;
