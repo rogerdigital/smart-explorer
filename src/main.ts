@@ -1,3 +1,4 @@
+import { renameManualOrderPaths } from "./explorer/manualOrder";
 import { Notice, Plugin } from "obsidian";
 import { SMART_EXPLORER_VIEW_TYPE } from "./constants";
 import { SmartExplorerView } from "./explorer/SmartExplorerView";
@@ -10,6 +11,14 @@ export default class SmartExplorerPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			const order = this.settings.manualOrder;
+			const nextOrder = renameManualOrderPaths(order, oldPath, file.path);
+			if (nextOrder === order) return;
+			this.settings.manualOrder = nextOrder;
+			void this.saveSettingsWithNotice("Could not save manual order after rename");
+		}));
 
 		this.registerView(SMART_EXPLORER_VIEW_TYPE, (leaf) => new SmartExplorerView(leaf, this));
 
