@@ -3,7 +3,7 @@
 Obsidian plugin — alternative side-pane file explorer with tree/list browsing, sorting, grouping, filtering, and manual order.
 
 - Plugin ID: `smart-explorer`
-- Current version: `0.6.1`
+- Current version: `1.0.0`
 - Min Obsidian version: `1.7.2`
 
 ## Commands
