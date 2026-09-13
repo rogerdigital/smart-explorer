@@ -4,9 +4,11 @@
  *
  * May only create or delete `<vault>/smart-explorer-large-vault-fixture`.
  * The content directory must be visible so Obsidian includes it in its index.
- * A marker file is written before any file generation; removal refuses to
- * run unless the directory name and marker both match, so an unmarked or
- * mistyped path can never be deleted.
+ * `--layout folders` (default) spreads files across 100 subfolders; `--layout
+ * flat` puts every file directly in the fixture directory for many-sibling
+ * stress testing. A marker file is written before any file generation; removal
+ * refuses to run unless the directory name and marker both match, so an
+ * unmarked or mistyped path can never be deleted.
  */
 import process from "node:process";
 import { parseArgs } from "node:util";
@@ -18,6 +20,7 @@ const MARKER_FILE_NAME = ".smart-explorer-fixture-marker";
 const MIN_FILES = 100;
 const MAX_FILES = 50000;
 const FOLDER_COUNT = 100;
+const LAYOUTS = ["folders", "flat"];
 
 export function fail(message) {
 	throw new Error(message);
@@ -30,6 +33,7 @@ function parseArguments(argv) {
 			options: {
 				vault: { type: "string" },
 				files: { type: "string" },
+				layout: { type: "string" },
 				remove: { type: "boolean", default: false },
 			},
 			strict: true,
@@ -46,13 +50,17 @@ export function resolveFixturePath(vault) {
 
 export function validateOptions({ values }) {
 	if (!values.vault) fail("missing --vault <path>");
-	if (values.remove) return { remove: true, vault: values.vault, files: null };
+	const layout = values.layout ?? "folders";
+	if (!LAYOUTS.includes(layout)) {
+		fail(`--layout must be one of: ${LAYOUTS.join(", ")}`);
+	}
+	if (values.remove) return { remove: true, vault: values.vault, files: null, layout };
 	if (values.files === undefined) fail("missing --files <100-50000>");
 	const files = Number(values.files);
 	if (!Number.isInteger(files) || files < MIN_FILES || files > MAX_FILES) {
 		fail(`--files must be an integer between ${MIN_FILES} and ${MAX_FILES}`);
 	}
-	return { remove: false, vault: values.vault, files };
+	return { remove: false, vault: values.vault, files, layout };
 }
 
 async function isMarkedFixtureDir(dir) {
@@ -72,33 +80,44 @@ async function isMarkedFixtureDir(dir) {
 	}
 }
 
-export async function createFixture(vault, files) {
+export async function createFixture(vault, files, layout = "folders") {
 	const dir = resolveFixturePath(vault);
 	if (path.dirname(dir) === dir) fail("refusing to operate on a filesystem root");
 	await mkdir(dir, { recursive: false });
 	await writeFile(path.join(dir, MARKER_FILE_NAME), "smart-explorer-large-vault-fixture\n");
 
-	const perFolder = Math.ceil(files / FOLDER_COUNT);
 	const attachments = [
 		{ ext: "png", size: 0 },
 		{ ext: "pdf", size: 0 },
 		{ ext: "docx", size: 0 },
 	];
-	let created = 0;
 	let attachmentIndex = 0;
-	for (let folderIndex = 0; folderIndex < FOLDER_COUNT && created < files; folderIndex++) {
-		const folder = path.join(dir, `folder-${String(folderIndex).padStart(3, "0")}`);
-		await mkdir(folder);
-		for (let fileIndex = 0; fileIndex < perFolder && created < files; fileIndex++) {
-			const isAttachment = fileIndex % 50 === 49 && fileIndex > 0;
-			if (isAttachment) {
-				const attachment = attachments[attachmentIndex % attachments.length];
-				attachmentIndex++;
-				await writeFile(path.join(folder, `attachment-${fileIndex}.${attachment.ext}`), "");
-			} else {
-				await writeFile(path.join(folder, `note-${fileIndex}.md`), "# Fixture note\n");
-			}
+	const writeFixtureFile = async (target, fileIndex) => {
+		const isAttachment = fileIndex % 50 === 49 && fileIndex > 0;
+		if (isAttachment) {
+			const attachment = attachments[attachmentIndex % attachments.length];
+			attachmentIndex++;
+			await writeFile(path.join(target, `attachment-${fileIndex}.${attachment.ext}`), "");
+		} else {
+			await writeFile(path.join(target, `note-${fileIndex}.md`), "# Fixture note\n");
+		}
+	};
+
+	let created = 0;
+	if (layout === "flat") {
+		for (let fileIndex = 0; fileIndex < files; fileIndex++) {
+			await writeFixtureFile(dir, fileIndex);
 			created++;
+		}
+	} else {
+		const perFolder = Math.ceil(files / FOLDER_COUNT);
+		for (let folderIndex = 0; folderIndex < FOLDER_COUNT && created < files; folderIndex++) {
+			const folder = path.join(dir, `folder-${String(folderIndex).padStart(3, "0")}`);
+			await mkdir(folder);
+			for (let fileIndex = 0; fileIndex < perFolder && created < files; fileIndex++) {
+				await writeFixtureFile(folder, fileIndex);
+				created++;
+			}
 		}
 	}
 	console.log(`created ${created} fixture files in ${dir}`);
@@ -119,7 +138,7 @@ async function main() {
 	if (options.remove) {
 		await removeFixture(options.vault);
 	} else {
-		await createFixture(options.vault, options.files);
+		await createFixture(options.vault, options.files, options.layout);
 	}
 }
 

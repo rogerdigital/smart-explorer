@@ -39,6 +39,15 @@ test("--files outside 100-50000 fails", () => {
 	expectFailure(() => validateOptions(parsed({ vault: "/tmp/x", files: "abc" })), "integer");
 });
 
+test("unknown --layout fails", () => {
+	expectFailure(() => validateOptions(parsed({ vault: "/tmp/x", files: "100", layout: "wide" })), "--layout");
+});
+
+test("layout defaults to folders and --remove ignores layout", () => {
+	assert.equal(validateOptions(parsed({ vault: "/tmp/x", files: "100" })).layout, "folders");
+	assert.deepEqual(validateOptions(parsed({ vault: "/tmp/x", remove: true, layout: "flat" })).files, null);
+});
+
 test("cleanup refuses an unmarked directory", async () => {
 	const vault = await mkdtemp(path.join(tmpdir(), "se-fixture-"));
 	const fixture = resolveFixturePath(vault);
@@ -100,6 +109,27 @@ test("a 5000-file fixture rotates through every attachment format", async () => 
 		}
 
 		assert.deepEqual([...extensions].sort(), ["docx", "md", "pdf", "png"]);
+	} finally {
+		await rm(vault, { recursive: true });
+	}
+});
+
+test("a flat fixture puts every file directly in the fixture directory", async () => {
+	const vault = await mkdtemp(path.join(tmpdir(), "se-fixture-"));
+	try {
+		await createFixture(vault, 100, "flat");
+
+		const fixture = resolveFixturePath(vault);
+		const entries = await readdir(fixture);
+		const files = entries.filter((entry) => entry !== ".smart-explorer-fixture-marker");
+		assert.equal(files.length, 100);
+		for (const entry of entries) {
+			assert.ok((await stat(path.join(fixture, entry))).isFile(), `${entry} should be a file`);
+		}
+		assert.ok(entries.some((entry) => entry.endsWith(".png")));
+
+		await removeFixture(vault);
+		assert.deepEqual(await readdir(vault), []);
 	} finally {
 		await rm(vault, { recursive: true });
 	}
