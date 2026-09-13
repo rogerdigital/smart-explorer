@@ -1,6 +1,26 @@
 import { normalizeSettings } from "../settings-normalization";
 
 describe("normalizeSettings", () => {
+	it("migrates the 0.5.4 schema without losing saved preferences or manual order", () => {
+		// Fields verified against tag 0.5.4:src/settings/settings.ts.
+		const saved = {
+			defaultSort: "manual", defaultGroup: "folder",
+			hiddenExtensions: ["png"], manualOrder: ["b.md", "a.md"],
+		};
+		expect(normalizeSettings(saved)).toEqual({ ...saved, lastViewMode: "tree" });
+		expect(saved.manualOrder).toEqual(["b.md", "a.md"]);
+	});
+
+	it("preserves the 0.6.1 schema including list mode across a save/load round trip", () => {
+		const saved = {
+			defaultSort: "manual", defaultGroup: "folder", lastViewMode: "list",
+			hiddenExtensions: ["png"], manualOrder: ["b.md", "a.md"],
+		};
+		const loaded = normalizeSettings(saved);
+		expect(loaded).toEqual(saved);
+		expect(normalizeSettings(JSON.parse(JSON.stringify(loaded)))).toEqual(saved);
+	});
+
 	it("falls back to defaults for corrupt enum values", () => {
 		expect(normalizeSettings({
 			defaultSort: "random",
