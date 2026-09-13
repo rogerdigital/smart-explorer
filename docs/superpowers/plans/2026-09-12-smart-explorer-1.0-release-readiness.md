@@ -13,15 +13,15 @@
 
 ## Execution status — 2026-09-13
 
-Implementation is complete; release acceptance remains blocked. See [candidate evidence](../../verification/1.0.0-readiness.md) for exact runtime observations, asset hashes, cleanup, and remaining gates.
+Implementation is complete. The user confirmed the previously reported mobile, Obsidian 1.7.2, VoiceOver, and full keyboard/drag acceptance items. Other release checks remain tracked separately. See [candidate evidence](../../verification/1.0.0-readiness.md) for exact runtime observations, asset hashes, cleanup, and remaining gates.
 
 - Tasks 1–4: completed. Core changes share one tightly coupled commit (`164b501`) because plugin ownership, view history, and integration-harness changes must be tested together.
-- Task 5: desktop rename/link/Undo/no-pane/reload, targeted native creation/keyboard, and real 5,000-file performance checks completed; full gestures/keyboard/width matrix still pending.
-- Task 6: schema regression, actual 0.5.4 and 0.6.1 upgrades, and no-data loading completed. Mobile, minimum-version, and final downloaded-release install gates remain blocked.
+- Task 5: desktop rename/link/Undo/no-pane/reload, targeted native creation/keyboard, and real 5,000-file performance checks completed; full gestures/keyboard and VoiceOver subsequently confirmed by the user; remaining width/error cases are tracked in the evidence.
+- Task 6: schema regression, actual 0.5.4 and 0.6.1 upgrades, and no-data loading completed. Mobile and minimum-version checks subsequently confirmed by the user; final downloaded-release installation remains pending.
 - Task 7: documentation and draft notes completed; version remains 0.6.1.
 - Tasks 8–9: not started; prerequisites are not satisfied. No publication authorization is inferred.
 - Evidence-driven adjustment: hidden fixture content was invisible to Obsidian (0 indexed files). The generator now uses `smart-explorer-large-vault-fixture`, with the marker guard retained (`05a0214`). Do not reuse the former hidden path for future performance acceptance.
-- Local commits preserve the implementation and documentation boundaries; no implementation PR has been opened by this execution.
+- Implementation and documentation are delivered together on `fix/1.0-order-reliability` for the user-requested PR, without release metadata changes.
 
 ## 1. Execution contract
 
