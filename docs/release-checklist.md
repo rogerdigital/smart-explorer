@@ -1,6 +1,6 @@
 # Release Checklist
 
-Record results against the exact candidate commit and asset hashes. For 1.0.0, use the [release-readiness plan](superpowers/plans/2026-09-12-smart-explorer-1.0-release-readiness.md) and [evidence report](verification/1.0.0-readiness.md). A mandatory FAIL or BLOCKED row prevents release promotion. Automated tests, emulation, and API typings do not replace native runtime acceptance.
+Record results against the exact candidate commit and asset hashes. The 1.0.0 acceptance evidence is recorded in the [evidence report](verification/1.0.0-readiness.md). A mandatory FAIL or BLOCKED row prevents release promotion. Automated tests, emulation, and API typings do not replace native runtime acceptance.
 
 ## Pre-release
 
